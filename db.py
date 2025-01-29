@@ -25,7 +25,8 @@ def verificarTienda(ID):
     return data  # Devuelve None si no se encuentra
 
 def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
-    url = "http://192.168.0.62:81/glpi/apirest.php/Ticket/?app_token={sett.app_token}&session_token={sett.session_token}"
+    url = f"http://192.168.0.62:81/glpi/apirest.php/Ticket/?app_token={sett.app_token}&session_token={sett.session_token}"
+    print(f"URL de creación de ticket: {url}")
     
     payload = {
         "input": {
@@ -118,27 +119,22 @@ def consultarTicket(ticket_id):
 
 # Trae toda la información dell usuario
 def consultarUser(users_id):
-    url = f"http://192.168.0.62:81/glpi/apirest.php/User/{users_id}/?app_token={sett.app_token}&session_token={sett.session_token}"
-    params = {"ID": users_id}
+    url = f"http://192.168.0.62:81/glpi/apirest.php/User/{users_id}?app_token={sett.app_token}&session_token={sett.session_token}"  # URL corregida
     print(f"Consultando el usuario con ID: {users_id}")
     try:
-        if url:
-            response = requests.get(url, params=params)
-            response.raise_for_status()  # Levantar una excepción si la respuesta no es 200
-            data = response.json()
-            print(f"User encontrado: {data}")
-            if data and isinstance(data, dict):
-                return data.get('firstname', 'realname')
-            else:
-                print("No se encontró ningún usuario con ese ID")
-                return None # Retorna los datos recibidos de la API
+        response = requests.get(url)
+        response.raise_for_status()  # Lanza una excepción para códigos de error 4xx o 5xx
+        data = response.json()
+        print(f"User encontrado: {data}")
+        return data.get('firstname') or data.get('realname') or "Usuario desconocido"
     except requests.exceptions.RequestException as e:
         print(f"Error al llamar a la API: {e}")
-        return None
+        if response.status_code == 404: #Manejo de error 404
+            return "Usuario no encontrado"
+        return None  # Devuelve None en caso de otros errores de la API
     except Exception as e:
         print(f"Error al consultar el usuario: {e}")
-        return 403
-    return data
+        return None  # Devuelve None para otros errores
 
 def consultarAsignado(ticket_id):
     url = f"http://192.168.0.62:81/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={sett.session_token}"
@@ -154,7 +150,7 @@ def consultarAsignado(ticket_id):
                 print(f"users_id en la segunda posición: {user_position2}")
                 return user_position2
             else:
-                print("La lista no tiene suficientes elementos") # Retorna los datos recibidos de la API
+                print("La lista no tiene suficientes elementos")
     except Exception as e:
         print(f"Error al consultar el usuario: {e}")
         return e, 403
@@ -206,15 +202,7 @@ def consultarTicketConUsuario(ticket_id):
         asignado_id = consultarAsignado(ticket_id)
         asignado = consultarUser(asignado_id)
         ticket['users_id_lastupdater'] = asignado or "No asignado"
-        if ticket['status'] == "Nuevo" or ticket['users_id_recipient'] == "No asignado":
-            mensaje_estado = (
-                        "🏃🏽‍♂️En breve, un miembro de nuestro equipo comenzará a trabajar en tu solicitud. "
-                        "Te enviaremos todas las actualizaciones del caso al correo electrónico registrado."
-                    )
-            return mensaje_estado
-        else:
-            print(f"Ticket actualizado: {ticket}")
-            return ticket
+        return ticket
     else:
         print("No se encontró el ID del usuario en el ticket.")
 

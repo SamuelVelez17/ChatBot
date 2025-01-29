@@ -26,7 +26,7 @@ def enviar_Mensaje_whatsapp(data):
             return 'error al enviar mensaje', response.status_code
     except Exception as e:
         print(f"Error al intentar enviar el mensaje: {e}")
-        return e, 403
+        return (str(e)), 403
 
 # Función para generar un mensaje de texto
 def text_Message(number, text):
@@ -198,6 +198,7 @@ def administrar_chatbot(text, number, messageId, name):
         "3":"Administración", 
         "4":"TI"
     }
+    
     def estado_inicio():
         saludos = ["hola", "buenas", "buenos", "compa", "soporte", "ti", "ayuda", "necesito", "tienda", "id"]
         if any(saludo in text.lower() for saludo in saludos):
@@ -237,18 +238,28 @@ def administrar_chatbot(text, number, messageId, name):
             ticket = db.consultarTicketConUsuario(ticket_id)
             if ticket:
                 print(f"----------------------------Entro al if ticket")
-                numero_ticket = ticket.get('id', 'Ticket desconocido')
+                if isinstance(ticket, dict):  # Verifica si ticket es un diccionario
+                    numero_ticket = ticket.get('id', 'Ticket desconocido')
+                    # ... (resto del código que usa la información del ticket)
+                elif isinstance(ticket, str): #Verifica si es un string
+                    print(f"Error al consultar el ticket: {ticket}") #Imprime el mensaje de error
+                    mensaje_estado = ticket #Asigna el mensaje de error a la variable mensaje_estado
+                    return mensaje_estado #Retorna el mensaje de error
+                else:
+                    print("Error: La variable 'ticket' no es un diccionario ni un string.")
+                    return "Error al consultar el ticket." #Retorna un mensaje de error
                 responsable = ticket.get('users_id_recipient', 'Usuario desconocido')
                 asignado = ticket.get('users_id_lastupdater', 'SIN ASIGNAR')  # Usar el nombre del usuario
                 estado = ticket.get('status', 'SIN REVISAR')
                 
                 # Verificar si el ticket está "Nuevo" y sin asignar
-                if estado == "Nuevo" or asignado == "No asignado":
+                if estado == "Nuevo":
                     mensaje_estado = (
-                        "🏃🏽‍♂️En breve, un miembro de nuestro equipo comenzará a trabajar en tu solicitud. "
-                        "Te enviaremos todas las actualizaciones del caso al correo electrónico registrado."
-                    )
+                            "🏃🏽‍♂️En breve, un miembro de nuestro equipo comenzará a trabajar en tu solicitud. "
+                            "Te enviaremos todas las actualizaciones del caso al correo electrónico registrado."
+                        )
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje_estado))
+                        
                 else:
                     # Enviar mensaje con los datos del ticket
                     app.estados[f"{number}_ticket"] = {
@@ -275,8 +286,6 @@ def administrar_chatbot(text, number, messageId, name):
         else:
             mensaje = "Envía un ID de ticket válido, un número"
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-            
-
 
     def estado_esperando_area():
         texto_normalizado = text.strip().lower()
@@ -320,32 +329,30 @@ def administrar_chatbot(text, number, messageId, name):
         descripcion = text.strip()
         nombre = app.estados.get(f"{number}_nombre", "Usuario desconocido")
 
-        # Crear ticket y asignar usuario con mensaje personalizado para "Oficina"
         respuesta = db.crearTicketYAsignarUsuario(
             nombre_tienda="Oficina",
             responsable=nombre,
+            estado="Nuevo",
             opcion_id=38,  # ID predeterminado para soporte "Oficina"
             descripcion=f"Soporte solicitado por: {nombre}. {descripcion}"
         )
 
         if "error" in respuesta:
             mensaje_error = f"Hubo un error al procesar tu solicitud: {respuesta['error']}"
-            data = text_Message(number, mensaje_error)
+            data = text_Message(number, mensaje_error)  # Define data aquí
+            enviar_Mensaje_whatsapp(data)
         else:
             mensaje_exito = f"{respuesta['message']}"
             mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
-            del user_timers[number]
-            data = text_Message(number, mensaje_exito)
-            data2 = text_Message(number, mensaje)
-            
-        enviar_Mensaje_whatsapp(data)
-        enviar_Mensaje_whatsapp(data2)
+            data = text_Message(number, mensaje_exito)  # Define data aquí
+            data2 = text_Message(number, mensaje)  # Define data2 aquí
+            enviar_Mensaje_whatsapp(data)
+            enviar_Mensaje_whatsapp(data2)
 
-
-        # Reiniciar el estado del usuario
+        # Reiniciar el estado del usuario (esto va fuera del if/else)
         app.estados.pop(number, None)
         app.estados.pop(f"{number}_nombre", None)
-        return
+        return # Asegúrate de que la función siempre tenga un retorno
 
     def estado_esperando_id():
         if text.isdigit():
@@ -393,24 +400,23 @@ def administrar_chatbot(text, number, messageId, name):
             tienda = app.estados.get(f"{number}_tienda", {"nombre": "Tienda desconocida", "responsable": "Responsable desconocido", "estado": "Estado desconocido"})
             nombre_tienda = tienda["nombre"]
             responsable = tienda["responsable"]
-
-            if opcion_id == "38":
+            if opcion_id == "38":  # "Otro"
                 mensaje = "✉️ Describe tu solicitud, para que nuestro equipo de soporte pueda ayudarte."
                 enviar_Mensaje_whatsapp(text_Message(number, mensaje))
                 app.estados[number] = "esperando_descripcion"
-                app.estados[f"{number}_otros"] = {"nombre_tienda": nombre_tienda, "responsable": responsable, "opcion_id": opcion_id}
-            else:
-                respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, opcion_id)
+                app.estados[f"{number}_otros"] = {"nombre_tienda": nombre_tienda, "responsable": responsable, "opcion_id": opcion_id, "estado": tienda.get("estado")} #Se le agrega el estado
+            else:  # Opción específica (Factura Mayor, etc.)
+                respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, tienda.get("estado"), opcion_id) #Pasa el opcion_id y el estado
                 if "error" in respuesta:
                     mensaje_error = f"Error al procesar tu solicitud: {respuesta['error']}"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje_error))
                 else:
                     mensaje_exito = f"{respuesta['message']}"
-                    mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
+                    mensaje = "🥹Hemos finalizado tu chat, hasta pronto."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
                     del user_timers[number]
-                app.estados[number] = "inicio"
+                    app.estados[number] = "inicio"
         else:
             mensaje = "Opción de soporte no válida ❌. Selecciona del menú. "
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -458,7 +464,7 @@ def administrar_chatbot(text, number, messageId, name):
         mensaje = "Ha ocurrido un error. Por favor, inicia el flujo nuevamente. 😊"
         enviar_Mensaje_whatsapp(text_Message(number, mensaje))
         app.estados[number] = "inicio"
-            
+
 start_inactivity_check()
 
 
