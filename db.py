@@ -2,6 +2,8 @@ import pyodbc
 import requests
 import sett
 import json
+import logging
+logging.basicConfig(filename='db.log', level=logging.DEBUG)
 
 def initSession():
     url = f"http://{sett.private}//glpi/apirest.php/initSession/?app_token={sett.app_token}"
@@ -28,20 +30,25 @@ def verificarTienda(ID):
     url = "https://apitr.tiendaregistrada.com.co:5001/botTienda"  # Reemplaza con la URL de tu API
     params = {"ID": ID}
     print(f"Consultando la tienda con ID: {ID}")
+    logging.info(f"Consultando la tienda con ID: {ID}")
     try:
         if url:
             response = requests.get(url, params=params)
             response.raise_for_status()  # Levantar una excepción si la respuesta no es 200
             data = response.json()
             print(f"Tienda encontrada: {data}")
+            logging.info(f"Tienda encontrada: {data}")
         else:
-            print("No se encontró ninguna tienda con ese ID.")# Parsear la respuesta como JSON
+            print("No se encontró ninguna tienda con ese ID.")
+            logging.error("No se encontró ninguna tienda con ese ID.")
             return data  # Retorna los datos recibidos de la API
     except requests.exceptions.RequestException as e:
         print(f"Error al llamar a la API: {e}")
+        logging.error(f"Error al llamar a la API: {e}")
         return None
     except Exception as e:
         print(f"Error al consultar la tienda: {e}")
+        logging.error(f"Error al consultar la tienda: {e}")
         return e, 403
     return data  # Devuelve None si no se encuentra
 
