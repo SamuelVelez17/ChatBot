@@ -11,4 +11,9 @@ db_pwd = 'D3v3l0pm3nt_23'
 
 # GLPI
 app_token = 'Szfere0OY0d94eRWTdrzkG3S3BYfR7s6WcZ10YxI'
-session_token = '103t8dpkpk6m7fbnli6jckogfd'
+# session_token = '14qpbm8tr500uofk5am9tbau48'
+
+# IP PUBLICA
+public = '181.143.64.93:81'
+# IP PRIVADA
+private = '192.168.0.62:81'

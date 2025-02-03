@@ -3,6 +3,27 @@ import requests
 import sett
 import json
 
+def initSession():
+    url = f"http://{sett.private}//glpi/apirest.php/initSession/?app_token={sett.app_token}"
+    username = "botsoporte"
+    password = "qwerty"
+    if url:
+        try:
+            response = requests.get(url, auth=(username, password))
+            response.raise_for_status()  # Lanza una excepción para códigos de estado HTTP 4xx o 5xx
+            data= response.json()
+            print(f"Token de sesión: {data}")
+            session_token = data.get('session_token')
+            return session_token
+        except requests.exceptions.RequestException as e:
+            print(f"Error en la solicitud: {e}")
+            return None
+    else:
+        print(f"No se encontró la URL de la API.")
+
+session_token = initSession()
+print(f"Token de sesión: {session_token}")
+
 def verificarTienda(ID):
     url = "https://apitr.tiendaregistrada.com.co:5001/botTienda"  # Reemplaza con la URL de tu API
     params = {"ID": ID}
@@ -24,8 +45,26 @@ def verificarTienda(ID):
         return e, 403
     return data  # Devuelve None si no se encuentra
 
+def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion=""):
+    # Crear el ticket
+    respuesta_crear_ticket = crearTicket(nombre_tienda, responsable, opcion_id, descripcion)
+
+    if "error" in respuesta_crear_ticket:
+        return {"error": respuesta_crear_ticket["error"]}
+
+    ticket_id = respuesta_crear_ticket.get("id")
+    if not ticket_id:
+        return {"error": "No se recibió un ID de ticket en la respuesta de la API."}
+
+    # Asignar el usuario al ticket
+    respuesta_asignacion = solicitante(ticket_id)
+    if "error" in respuesta_asignacion:
+        return {"message": f"✅ Hemos registrado tu solicitud. Tu número de ticket es: *{ticket_id}*."}
+
+    return {"message": f"✅ Hemos registrado tu solicitud. Tu número de ticket es: {ticket_id}."}
+
 def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
-    url = f"http://192.168.0.62:81/glpi/apirest.php/Ticket/?app_token={sett.app_token}&session_token={sett.session_token}"
+    url = f"http://{sett.private}/glpi/apirest.php/Ticket/?app_token={sett.app_token}&session_token={session_token}"
     print(f"URL de creación de ticket: {url}")
     
     payload = {
@@ -57,7 +96,7 @@ def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
         return {"error": f"Error al hacer la petición POST: {e}"}
 
 def solicitante(ticket_id, user_id=144):
-    url = f"http://192.168.0.62:81/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={sett.session_token}"
+    url = f"http://{sett.private}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={session_token}"
     
     payload = {
         "input": {
@@ -80,27 +119,9 @@ def solicitante(ticket_id, user_id=144):
         print(error_msg)
         return {"error": error_msg}
 
-def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion=""):
-    # Crear el ticket
-    respuesta_crear_ticket = crearTicket(nombre_tienda, responsable, opcion_id, descripcion)
-
-    if "error" in respuesta_crear_ticket:
-        return {"error": respuesta_crear_ticket["error"]}
-
-    ticket_id = respuesta_crear_ticket.get("id")
-    if not ticket_id:
-        return {"error": "No se recibió un ID de ticket en la respuesta de la API."}
-
-    # Asignar el usuario al ticket
-    respuesta_asignacion = solicitante(ticket_id)
-    if "error" in respuesta_asignacion:
-        return {"message": f"✅ Hemos registrado tu solicitud. Tu número de ticket es: *{ticket_id}*."}
-
-    return {"message": f"✅ Hemos registrado tu solicitud. Tu número de ticket es: {ticket_id}."}
-
 # Traer toda la información del TICKET
 def consultarTicket(ticket_id):
-    url = f"http://192.168.0.62:81/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={sett.session_token}"
+    url = f"http://{sett.private}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={session_token}"
     params = {"id": ticket_id}
     print(f"Consultando el ticket con ID: {ticket_id}")
     try:
@@ -117,9 +138,9 @@ def consultarTicket(ticket_id):
         return 403
     return data  # Devuelve None si no se encuentra
 
-# Trae toda la información dell usuario
+# Trae toda la información del usuario
 def consultarUser(users_id):
-    url = f"http://192.168.0.62:81/glpi/apirest.php/User/{users_id}?app_token={sett.app_token}&session_token={sett.session_token}"  # URL corregida
+    url = f"http://{sett.private}/glpi/apirest.php/User/{users_id}?app_token={sett.app_token}&session_token={session_token}"  # URL corregida
     print(f"Consultando el usuario con ID: {users_id}")
     try:
         response = requests.get(url)
@@ -137,7 +158,7 @@ def consultarUser(users_id):
         return None  # Devuelve None para otros errores
 
 def consultarAsignado(ticket_id):
-    url = f"http://192.168.0.62:81/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={sett.session_token}"
+    url = f"http://{sett.private}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={session_token}"
     params = {"ID": ticket_id}
     print(f"Consultando el ticket con ID: {ticket_id}")
     try:
@@ -168,7 +189,7 @@ estados = {
 }
 
 def consultarEstados(ticket_id):
-    url = f"http://192.168.0.62:81/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={sett.session_token}"
+    url = f"http://{sett.private}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={session_token}"
     try:
         response = requests.get(url)
         response.raise_for_status()  # Verifica si hubo errores HTTP

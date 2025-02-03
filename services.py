@@ -204,10 +204,10 @@ def administrar_chatbot(text, number, messageId, name):
         if any(saludo in text.lower() for saludo in saludos):
             mensaje = "📩 ¡Bienvenido al chat de soporte TI de Tienda Registrada! ¿Cómo podemos ayudarte hoy?"
             botones = ["Crear solicitud", "Consultar solicitud"]
-            data = buttonReply_Message(number, botones, mensaje, "Selecciona una opción", "confirmacion", messageId)
-            enviar_Mensaje_whatsapp(data)
             recordatorio = "⏰ Finalizaremos automáticamente el chat después de 2 minutos de inactividad."
             enviar_Mensaje_whatsapp(text_Message(number, recordatorio))
+            data = buttonReply_Message(number, botones, mensaje, "Selecciona una opción", "confirmacion", messageId)
+            enviar_Mensaje_whatsapp(data)
             app.estados[number] = "esperando_confirmacion"
         else:
             mensaje = "👋🏽 Por favor, saluda antes de iniciar."
@@ -352,6 +352,7 @@ def administrar_chatbot(text, number, messageId, name):
         # Reiniciar el estado del usuario (esto va fuera del if/else)
         app.estados.pop(number, None)
         app.estados.pop(f"{number}_nombre", None)
+        del user_timers[number]
         return # Asegúrate de que la función siempre tenga un retorno
 
     def estado_esperando_id():
