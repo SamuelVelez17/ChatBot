@@ -439,9 +439,9 @@ def administrar_chatbot(text, number, messageId, name):
             enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
             del user_timers[number]
-        app.estados.pop(number, None)
-        app.estados.pop(f"{number}_otros", None)
-        app.estados.pop(f"{number}_tienda", None)
+            app.estados.pop(number, None)
+            app.estados.pop(f"{number}_otros", None)
+            app.estados.pop(f"{number}_tienda", None)
 
     # Mapeo de estados a funciones
     estados_funciones = {
