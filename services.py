@@ -205,6 +205,7 @@ def administrar_chatbot(text, number, messageId, name):
     def estado_inicio():
         saludos = ["hola", "buenas", "buenos", "compa", "soporte", "ti", "ayuda", "necesito", "tienda", "id"]
         if any(saludo in text.lower() for saludo in saludos):
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
             mensaje = "📩 ¡Bienvenido al chat de soporte TI de Tienda Registrada! ¿Cómo podemos ayudarte hoy?"
             botones = ["Crear solicitud", "Consultar solicitud"]
             recordatorio = "⏰ Finalizaremos automáticamente el chat después de 2 minutos de inactividad."
@@ -219,6 +220,7 @@ def administrar_chatbot(text, number, messageId, name):
     def estado_esperando_confirmacion():
         texto_normalizado = text.strip().lower()
         if texto_normalizado == "crear solicitud":
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
             mensaje = "¿A qué área perteneces?"
             data = listReply_Message(number, areas, mensaje, "Selecciona una opción", "confirmacion", messageId)
             enviar_Mensaje_whatsapp(data)
@@ -233,6 +235,7 @@ def administrar_chatbot(text, number, messageId, name):
 
     def estado_esperando_ticket():
         if text.isdigit():
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
             ticket_id = text
             mensaje = "💬 Estamos buscando información relacionada con el número de ticket que nos proporcionaste. ¡En un momento regresamos contigo!"
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -295,6 +298,7 @@ def administrar_chatbot(text, number, messageId, name):
     def estado_esperando_area():
         texto_normalizado = text.strip().lower()
         if texto_normalizado in ("negocios/consultoría", "administración", "ti"):
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
             app.estados[number] = "inicio_oficina"
             mensaje = "👤 A continuación, ingresa tu nombre completo."
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -309,6 +313,7 @@ def administrar_chatbot(text, number, messageId, name):
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
 
     def estado_esperando_nombre():
+        logging.info(f"Estado actual del usuario {number}: {estado_actual}")
         nombre = text.strip()
         app.estados[f"{number}_nombre"] = nombre
         mensaje = f"📝 Ingresaste tu nombre como *{nombre}*, ¿Es correcto?"
@@ -319,6 +324,7 @@ def administrar_chatbot(text, number, messageId, name):
     def estado_esperando_confirmacion_nombre():
         texto_normalizado = text.strip().lower()
         if texto_normalizado in ["sí", "si"]:
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
             mensaje = "✉️ Describe tu solicitud, para que nuestro equipo de soporte pueda ayudarte."
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
             app.estados[number] = "esperando_descripcion_oficina"
@@ -331,6 +337,7 @@ def administrar_chatbot(text, number, messageId, name):
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
 
     def estado_esperando_descripcion_oficina():
+        logging.info(f"Estado actual del usuario {number}: {estado_actual}")
         descripcion = text.strip()
         nombre = app.estados.get(f"{number}_nombre", "Usuario desconocido")
 
@@ -362,6 +369,7 @@ def administrar_chatbot(text, number, messageId, name):
 
     def estado_esperando_id():
         if text.isdigit():
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
             tienda_id = text
             mensaje = "💬 Estamos buscando información relacionada con el ID que nos proporcionaste. ¡En un momento regresamos contigo!"
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -386,6 +394,7 @@ def administrar_chatbot(text, number, messageId, name):
     def estado_esperando_confirmacion_tienda():
         texto_normalizado = text.strip().lower()
         if texto_normalizado in ["sí", "si"]:
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
             print(f"Usuario {number} ha confirmado la tienda.")
             logging.info(f"Usuario {number} ha confirmado la tienda.")
             app.estados[number] = "esperando_seleccion"
@@ -405,6 +414,7 @@ def administrar_chatbot(text, number, messageId, name):
     def estado_esperando_seleccion():
         opcion_id = next((key for key, value in opciones_soporte.items() if value.lower() == text.lower()), None)
         if opcion_id:
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
             tienda = app.estados.get(f"{number}_tienda", {"nombre": "Tienda desconocida", "responsable": "Responsable desconocido", "estado": "Estado desconocido"})
             nombre_tienda = tienda["nombre"]
             responsable = tienda["responsable"]
@@ -430,6 +440,7 @@ def administrar_chatbot(text, number, messageId, name):
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
 
     def estado_esperando_descripcion():
+        logging.info(f"Estado actual del usuario {number}: {estado_actual}")
         otros_datos = app.estados.get(f"{number}_otros", {})
         nombre_tienda = otros_datos.get("nombre_tienda", "Tienda desconocida")
         responsable = otros_datos.get("responsable", "Responsable desconocido")
