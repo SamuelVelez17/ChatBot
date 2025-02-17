@@ -20,9 +20,11 @@ def initSession():
             return session_token
         except Exception as e:
             print(f"Error en la solicitud: {e}")
+            logging.error(f"Error en la solicitud: {e}")
             return None
     else:
         print(f"No se encontró la URL de la API.")
+        logging.error(f"No se encontró la URL de la API.")
 
 session_token = initSession()
 print(f"Token de sesión: {session_token}")
@@ -76,6 +78,7 @@ def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, de
 def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
     url = f"http://{sett.public}/glpi/apirest.php/Ticket/?app_token={sett.app_token}&session_token={session_token}"
     print(f"URL de creación de ticket: {url}")
+    logging.info(f"URL de creación de ticket: {url}")
     
     payload = {
         "input": {
@@ -102,6 +105,7 @@ def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
                 return {"error": f"No se pudo interpretar la respuesta del servidor: {response.text}"}
         else:
             print(f"Error al crear el ticket. Respuesta: {response.text}")
+            logging.error(f"Error al crear el ticket. Respuesta: {response.text}")
             return {"error": f"No pudimos crear el ticket"}
     except Exception as e:
         return {"error": f"Error al hacer la petición POST: {e}"}
@@ -120,14 +124,17 @@ def solicitante(ticket_id, user_id=144):
         response = requests.post(url, json=payload)
         if response.status_code == 200:
             print(f"Usuario asignado correctamente al ticket {ticket_id}: {response.text}")
+            logging.info(f"Usuario asignado correctamente al ticket {ticket_id}: {response.text}")
             return response.json()
         else:
             error_msg = f"Error al asignar el usuario al ticket {ticket_id}. Respuesta: {response.text}"
             print(error_msg)
+            logging.error(error_msg)
             return {"error": error_msg}
     except Exception as e:
         error_msg = f"Error al hacer la petición POST al asignar usuario: {e}"
         print(error_msg)
+        logging.error(error_msg)
         return {"error": error_msg}
 
 # Traer toda la información del TICKET
@@ -135,17 +142,21 @@ def consultarTicket(ticket_id):
     url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={session_token}"
     params = {"id": ticket_id}
     print(f"Consultando el ticket con ID: {ticket_id}")
+    logging.info(f"Consultando el ticket con ID: {ticket_id}")
     try:
         if url:
             response = requests.get(url, params=params)
             response.raise_for_status()  # Levantar una excepción si la respuesta no es 200
             data = response.json()
             print(f"Ticket encontrado: {data}")
+            logging.info(f"Ticket encontrado: {data}")
     except requests.exceptions.RequestException as e:
         print(f"Error al llamar a la API: {e}")
+        logging.error(f"Error al llamar a la API: {e}")
         return None
     except Exception as e:
         print(f"Error al consultar el ticket: {e}")
+        logging.error(f"Error al consultar el ticket: {e}")
         return 403
     return data  # Devuelve None si no se encuentra
 
@@ -153,25 +164,30 @@ def consultarTicket(ticket_id):
 def consultarUser(users_id):
     url = f"http://{sett.public}/glpi/apirest.php/User/{users_id}?app_token={sett.app_token}&session_token={session_token}"  # URL corregida
     print(f"Consultando el usuario con ID: {users_id}")
+    logging.info(f"Consultando el usuario con ID: {users_id}")
     try:
         response = requests.get(url)
         response.raise_for_status()  # Lanza una excepción para códigos de error 4xx o 5xx
         data = response.json()
         print(f"User encontrado: {data}")
+        logging.info(f"User encontrado: {data}")
         return data.get('firstname') or data.get('realname') or "Usuario desconocido"
     except requests.exceptions.RequestException as e:
         print(f"Error al llamar a la API: {e}")
+        logging.error(f"Error al llamar a la API: {e}")
         if response.status_code == 404: #Manejo de error 404
             return "Usuario no encontrado"
         return None  # Devuelve None en caso de otros errores de la API
     except Exception as e:
         print(f"Error al consultar el usuario: {e}")
+        logging.error(f"Error al consultar el usuario: {e}")
         return None  # Devuelve None para otros errores
 
 def consultarAsignado(ticket_id):
     url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={session_token}"
     params = {"ID": ticket_id}
     print(f"Consultando el ticket con ID: {ticket_id}")
+    logging.info(f"Consultando el ticket con ID: {ticket_id}")
     try:
         if url:
             response = requests.get(url, params=params)
@@ -180,11 +196,14 @@ def consultarAsignado(ticket_id):
             if len(data) > 1:
                 user_position2 = data[1].get('users_id')
                 print(f"users_id en la segunda posición: {user_position2}")
+                logging.info(f"users_id en la segunda posición: {user_position2}")
                 return user_position2
             else:
                 print("La lista no tiene suficientes elementos")
+                logging.error("La lista no tiene suficientes elementos")
     except Exception as e:
         print(f"Error al consultar el usuario: {e}")
+        logging.error(f"Error al consultar el usuario: {e}")
         return e, 403
     return data
 
@@ -210,17 +229,21 @@ def consultarEstados(ticket_id):
             data['status'] = estados[status_id]
         else:
             print(f"Estado con ID '{status_id}' no encontrado.")
+            logging.error(f"Estado con ID '{status_id}' no encontrado.")
         return data
     except requests.exceptions.RequestException as e:
         print(f"Error al llamar a la API: {e}")
+        logging.error(f"Error al llamar a la API: {e}")
     except Exception as e:
         print(f"Error desconocido: {e}")
+        logging.error(f"Error desconocido: {e}")
     return None
 
 def consultarTicketConUsuario(ticket_id):
     ticket = consultarEstados(ticket_id)  # Consulta el ticket y su estado
     if not ticket:
         print("No se encontró información del ticket.")
+        logging.error("No se encontró información del ticket.")
         return None
 
     users_id = ticket.get('users_id_recipient')
@@ -235,6 +258,7 @@ def consultarTicketConUsuario(ticket_id):
         return ticket
     else:
         print("No se encontró el ID del usuario en el ticket.")
+        logging.error("No se encontró el ID del usuario en el ticket.")
 
     return ticket
 
