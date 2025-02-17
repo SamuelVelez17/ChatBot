@@ -394,17 +394,16 @@ def administrar_chatbot(text, number, messageId, name):
     def estado_esperando_confirmacion_tienda():
         texto_normalizado = text.strip().lower()
         if texto_normalizado in ["sí", "si"]:
-            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
             print(f"Usuario {number} ha confirmado la tienda.")
-            logging.info(f"Usuario {number} ha confirmado la tienda.")
-            app.estados[number] = "esperando_seleccion"
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
+            app.estados[number] = "esperando_seleccion"  # Cambiar al estado correcto
             mensaje = "Por favor, elige una opción de soporte: 🙌🏻"
             data = listReply_Message(number, opciones_soporte, mensaje, "Selecciona una opción", "soporte", messageId)
             enviar_Mensaje_whatsapp(data)
         elif texto_normalizado == "no":
             print(f"Usuario {number} ha respondido que la tienda no es correcta.")
-            logging.info(f"Usuario {number} ha respondido que la tienda no es correcta.")
-            mensaje = "Por favor, envíame el ID de la tienda. 😊"
+            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
+            mensaje = "Por favor, envíame el ID de la tienda nuevamente. 😊"
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
             app.estados[number] = "esperando_id"
         else:
@@ -440,7 +439,6 @@ def administrar_chatbot(text, number, messageId, name):
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
 
     def estado_esperando_descripcion():
-        logging.info(f"Estado actual del usuario {number}: {estado_actual}")
         otros_datos = app.estados.get(f"{number}_otros", {})
         nombre_tienda = otros_datos.get("nombre_tienda", "Tienda desconocida")
         responsable = otros_datos.get("responsable", "Responsable desconocido")
