@@ -1,6 +1,8 @@
 from flask import Flask, request
 import sett 
 import services
+import logging
+logging.basicConfig(filename='app.log', level=logging.DEBUG)
 
 app = Flask(__name__)
 
@@ -27,6 +29,7 @@ def recibir_mensajes():
     try:
         body = request.get_json()
         print(f"Mensaje recibido:")
+        logging.info(f"Mensaje recibido: {body}")
         entry = body['entry'][0]
         changes = entry['changes'][0]
         value = changes['value']
@@ -38,7 +41,7 @@ def recibir_mensajes():
         text = services.obtener_Mensaje_whatsapp(message)
 
         print(f"Procesando mensaje del número: {number}, Nombre: {name}, Mensaje: {text}")
-
+        logging.info(f"Procesando mensaje del número: {number}, Nombre: {name}, Mensaje: {text}")
         services.administrar_chatbot(text, number, messageId, name)
         return 'enviado'
 

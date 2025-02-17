@@ -5,7 +5,8 @@ import time
 import db
 import app
 import threading
-
+import logging
+logging.basicConfig(filename='services.log', level=logging.DEBUG)
 # Función para enviar mensaje de texto a través de WhatsApp
 def enviar_Mensaje_whatsapp(data):
     try:
@@ -181,8 +182,10 @@ def listReply_Message(number, opciones, body, footer, sedd, messageId):
 def administrar_chatbot(text, number, messageId, name):
     reset_inactivity_timer(number)
     print(f"---------------------Inicio del flujo de chat para el número {number} con el mensaje: {text}")
+    logging.info(f"Inicio del flujo de chat para el número {number} con el mensaje: {text}")
     estado_actual = app.estados.get(number, "inicio")
     print(f"----------------------Estado actual del usuario {number}: {estado_actual}")
+    logging.info(f"Estado actual del usuario {number}: {estado_actual}")
 
     opciones_soporte = {
         "43": "Factura Mayor",
@@ -238,11 +241,13 @@ def administrar_chatbot(text, number, messageId, name):
             ticket = db.consultarTicketConUsuario(ticket_id)
             if ticket:
                 print(f"----------------------------Entro al if ticket")
+                logging.info(f"Ticket encontrado: {ticket}")
                 if isinstance(ticket, dict):  # Verifica si ticket es un diccionario
                     numero_ticket = ticket.get('id', 'Ticket desconocido')
                     # ... (resto del código que usa la información del ticket)
                 elif isinstance(ticket, str): #Verifica si es un string
                     print(f"Error al consultar el ticket: {ticket}") #Imprime el mensaje de error
+                    logging.error(f"Error al consultar el ticket: {ticket}") #Guarda el mensaje de error en el log
                     mensaje_estado = ticket #Asigna el mensaje de error a la variable mensaje_estado
                     return mensaje_estado #Retorna el mensaje de error
                 else:
@@ -382,12 +387,14 @@ def administrar_chatbot(text, number, messageId, name):
         texto_normalizado = text.strip().lower()
         if texto_normalizado in ["sí", "si"]:
             print(f"Usuario {number} ha confirmado la tienda.")
+            logging.info(f"Usuario {number} ha confirmado la tienda.")
             app.estados[number] = "esperando_seleccion"
             mensaje = "Por favor, elige una opción de soporte: 🙌🏻"
             data = listReply_Message(number, opciones_soporte, mensaje, "Selecciona una opción", "soporte", messageId)
             enviar_Mensaje_whatsapp(data)
         elif texto_normalizado == "no":
             print(f"Usuario {number} ha respondido que la tienda no es correcta.")
+            logging.info(f"Usuario {number} ha respondido que la tienda no es correcta.")
             mensaje = "Por favor, envíame el ID de la tienda. 😊"
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
             app.estados[number] = "esperando_id"

@@ -6,7 +6,7 @@ import logging
 logging.basicConfig(filename='db.log', level=logging.DEBUG)
 
 def initSession():
-    url = f"http://{sett.private}//glpi/apirest.php/initSession/?app_token={sett.app_token}"
+    url = f"http://{sett.public}//glpi/apirest.php/initSession/?app_token={sett.app_token}"
     username = "botsoporte"
     password = "qwerty"
     if url:
@@ -15,9 +15,10 @@ def initSession():
             response.raise_for_status()  # Lanza una excepción para códigos de estado HTTP 4xx o 5xx
             data= response.json()
             print(f"Token de sesión: {data}")
+            logging.info(f"Token de sesión: {data}")
             session_token = data.get('session_token')
             return session_token
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             print(f"Error en la solicitud: {e}")
             return None
     else:
@@ -25,15 +26,17 @@ def initSession():
 
 session_token = initSession()
 print(f"Token de sesión: {session_token}")
+logging.info(f"Token de sesión: {session_token}")
 
 def verificarTienda(ID):
-    url = "https://apitr.tiendaregistrada.com.co:5001/botTienda"  # Reemplaza con la URL de tu API
+    url = "http://apitr.tiendaregistrada.com.co:5001/botTienda" #localhost:5002  
     params = {"ID": ID}
     print(f"Consultando la tienda con ID: {ID}")
     logging.info(f"Consultando la tienda con ID: {ID}")
     try:
         if url:
-            response = requests.get(url, params=params)
+            #response = requests.get(url, params=params)
+            response = requests.get(url, params = params, verify=False)
             response.raise_for_status()  # Levantar una excepción si la respuesta no es 200
             data = response.json()
             print(f"Tienda encontrada: {data}")
@@ -50,7 +53,7 @@ def verificarTienda(ID):
         print(f"Error al consultar la tienda: {e}")
         logging.error(f"Error al consultar la tienda: {e}")
         return e, 403
-    return data  # Devuelve None si no se encuentra
+    return data 
 
 def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion=""):
     # Crear el ticket
@@ -71,7 +74,7 @@ def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, de
     return {"message": f"✅ Hemos registrado tu solicitud. Tu número de ticket es: {ticket_id}."}
 
 def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
-    url = f"http://{sett.private}/glpi/apirest.php/Ticket/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{sett.public}/glpi/apirest.php/Ticket/?app_token={sett.app_token}&session_token={session_token}"
     print(f"URL de creación de ticket: {url}")
     
     payload = {
@@ -98,12 +101,13 @@ def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
                 # Error al parsear el JSON
                 return {"error": f"No se pudo interpretar la respuesta del servidor: {response.text}"}
         else:
-            return {"error": f"Error al crear el ticket. Respuesta: {response.text}"}
+            print(f"Error al crear el ticket. Respuesta: {response.text}")
+            return {"error": f"No pudimos crear el ticket"}
     except Exception as e:
         return {"error": f"Error al hacer la petición POST: {e}"}
 
 def solicitante(ticket_id, user_id=144):
-    url = f"http://{sett.private}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={session_token}"
     
     payload = {
         "input": {
@@ -128,7 +132,7 @@ def solicitante(ticket_id, user_id=144):
 
 # Traer toda la información del TICKET
 def consultarTicket(ticket_id):
-    url = f"http://{sett.private}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={session_token}"
     params = {"id": ticket_id}
     print(f"Consultando el ticket con ID: {ticket_id}")
     try:
@@ -147,7 +151,7 @@ def consultarTicket(ticket_id):
 
 # Trae toda la información del usuario
 def consultarUser(users_id):
-    url = f"http://{sett.private}/glpi/apirest.php/User/{users_id}?app_token={sett.app_token}&session_token={session_token}"  # URL corregida
+    url = f"http://{sett.public}/glpi/apirest.php/User/{users_id}?app_token={sett.app_token}&session_token={session_token}"  # URL corregida
     print(f"Consultando el usuario con ID: {users_id}")
     try:
         response = requests.get(url)
@@ -165,7 +169,7 @@ def consultarUser(users_id):
         return None  # Devuelve None para otros errores
 
 def consultarAsignado(ticket_id):
-    url = f"http://{sett.private}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={session_token}"
     params = {"ID": ticket_id}
     print(f"Consultando el ticket con ID: {ticket_id}")
     try:
@@ -196,18 +200,16 @@ estados = {
 }
 
 def consultarEstados(ticket_id):
-    url = f"http://{sett.private}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={session_token}"
     try:
         response = requests.get(url)
         response.raise_for_status()  # Verifica si hubo errores HTTP
         data = response.json()
-
         status_id = data.get('status')
         if status_id in estados:
             data['status'] = estados[status_id]
         else:
             print(f"Estado con ID '{status_id}' no encontrado.")
-        
         return data
     except requests.exceptions.RequestException as e:
         print(f"Error al llamar a la API: {e}")
