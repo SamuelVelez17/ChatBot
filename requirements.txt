@@ -12,3 +12,4 @@ urllib3==2.0.3
 Werkzeug==2.3.6
 requests
 flask
+dotenv
