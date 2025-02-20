@@ -1,17 +1,19 @@
 import requests
-import sett
 import json
 import time
 import db
 import app
 import threading
 import logging
+from dotenv import load_dotenv
+import os
 logging.basicConfig(filename='services.log', level=logging.DEBUG)
+load_dotenv()
 # Función para enviar mensaje de texto a través de WhatsApp
 def enviar_Mensaje_whatsapp(data):
     try:
-        whatsapp_token = sett.whatsapp_token
-        whatsapp_url = sett.whatsapp_url
+        whatsapp_token = os.getenv("whatsapp_token")
+        whatsapp_url = os.getenv("whatsapp_url")
         headers = {'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + whatsapp_token}
         print("Se está enviando el mensaje")

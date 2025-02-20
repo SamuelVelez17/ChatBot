@@ -1,12 +1,15 @@
 import pyodbc
 import requests
-import sett
 import json
 import logging
+from dotenv import load_dotenv
+import os
 logging.basicConfig(filename='db.log', level=logging.DEBUG)
 
+load_dotenv()
+
 def initSession():
-    url = f"http://{sett.public}//glpi/apirest.php/initSession/?app_token={sett.app_token}"
+    url = f"http://{os.getenv("public")}//glpi/apirest.php/initSession/?app_token={os.getenv("app_token")}"
     username = "botsoporte"
     password = "qwerty"
     if url:
@@ -34,7 +37,7 @@ def conectar():
     try:
         # Conexión a la base de datos
         conexion = pyodbc.connect(
-            f"DRIVER={{SQL Server}};SERVER={sett.db_server};DATABASE={sett.db_database};UID={sett.db_user};PWD={sett.db_pwd}"
+            f"DRIVER={{SQL Server}};SERVER={os.getenv("db_server")};DATABASE={os.getenv("db_database")};UID={os.getenv("db_user")};PWD={os.getenv("db_pwd")}"
         )
         return conexion
     except Exception as e:
@@ -49,20 +52,12 @@ def verificarTienda(ID):
     cursor = conexion.cursor()
     
     try:
-        query = """
-            SELECT NombreTienda, Estado, ResponsableDeTienda 
-            FROM [FLX_Utils].[dbo].[TR_TAB_Tiendas.TAB] 
-            WHERE ID = ?
-        """
+        query = os.getenv("query")
         cursor.execute(query, (ID,))
         resultado = cursor.fetchone()
         
         if resultado:
-            response = {
-                "NombreTienda": resultado[0],
-                "Estado": resultado[1],
-                "ResponsableTienda": resultado[2]
-            }
+            response = os.getenv("response")
             logging.info(f"Tienda encontrada: {response}")
             return response
         else:
@@ -123,7 +118,7 @@ def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, de
     return {"message": f"✅ Hemos registrado tu solicitud. Tu número de ticket es: {ticket_id}."}
 
 def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
-    url = f"http://{sett.public}/glpi/apirest.php/Ticket/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{os.getenv("public")}/glpi/apirest.php/Ticket/?app_token={os.getenv("app_token")}&session_token={session_token}"
     print(f"URL de creación de ticket: {url}")
     logging.info(f"URL de creación de ticket: {url}")
     
@@ -158,7 +153,7 @@ def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
         return {"error": f"Error al hacer la petición POST: {e}"}
 
 def solicitante(ticket_id, user_id=144):
-    url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{os.getenv("public")}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={os.getenv("app_token")}&session_token={session_token}"
     
     payload = {
         "input": {
@@ -186,7 +181,7 @@ def solicitante(ticket_id, user_id=144):
 
 # Traer toda la información del TICKET
 def consultarTicket(ticket_id):
-    url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{os.getenv("public")}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={os.getenv("app_token")}&session_token={session_token}"
     params = {"id": ticket_id}
     print(f"Consultando el ticket con ID: {ticket_id}")
     logging.info(f"Consultando el ticket con ID: {ticket_id}")
@@ -209,7 +204,7 @@ def consultarTicket(ticket_id):
 
 # Trae toda la información del usuario
 def consultarUser(users_id):
-    url = f"http://{sett.public}/glpi/apirest.php/User/{users_id}?app_token={sett.app_token}&session_token={session_token}"  # URL corregida
+    url = f"http://{os.getenv("public")}/glpi/apirest.php/User/{users_id}?app_token={os.getenv("app_token")}&session_token={session_token}"  # URL corregida
     print(f"Consultando el usuario con ID: {users_id}")
     logging.info(f"Consultando el usuario con ID: {users_id}")
     try:
@@ -231,7 +226,7 @@ def consultarUser(users_id):
         return None  # Devuelve None para otros errores
 
 def consultarAsignado(ticket_id):
-    url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{os.getenv("public")}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={os.getenv("app_token")}&session_token={session_token}"
     params = {"ID": ticket_id}
     print(f"Consultando el ticket con ID: {ticket_id}")
     logging.info(f"Consultando el ticket con ID: {ticket_id}")
@@ -266,7 +261,7 @@ estados = {
 }
 
 def consultarEstados(ticket_id):
-    url = f"http://{sett.public}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={sett.app_token}&session_token={session_token}"
+    url = f"http://{os.getenv("public")}/glpi/apirest.php/Ticket/{ticket_id}/?app_token={os.getenv("app_token")}&session_token={session_token}"
     try:
         response = requests.get(url)
         response.raise_for_status()  # Verifica si hubo errores HTTP
