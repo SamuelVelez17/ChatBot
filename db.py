@@ -30,32 +30,79 @@ session_token = initSession()
 print(f"Token de sesión: {session_token}")
 logging.info(f"Token de sesión: {session_token}")
 
-def verificarTienda(ID):
-    url = "http://apitr.tiendaregistrada.com.co:5001/botTienda" #localhost:5002  
-    params = {"ID": ID}
-    print(f"Consultando la tienda con ID: {ID}")
-    logging.info(f"Consultando la tienda con ID: {ID}")
+def conectar():
     try:
-        if url:
-            #response = requests.get(url, params=params)
-            response = requests.get(url, params = params, verify=False)
-            response.raise_for_status()  # Levantar una excepción si la respuesta no es 200
-            data = response.json()
-            print(f"Tienda encontrada: {data}")
-            logging.info(f"Tienda encontrada: {data}")
-        else:
-            print("No se encontró ninguna tienda con ese ID.")
-            logging.error("No se encontró ninguna tienda con ese ID.")
-            return data  # Retorna los datos recibidos de la API
-    except requests.exceptions.RequestException as e:
-        print(f"Error al llamar a la API: {e}")
-        logging.error(f"Error al llamar a la API: {e}")
-        return None
+        # Conexión a la base de datos
+        conexion = pyodbc.connect(
+            f"DRIVER={{SQL Server}};SERVER={sett.db_server};DATABASE={sett.db_database};UID={sett.db_user};PWD={sett.db_pwd}"
+        )
+        return conexion
     except Exception as e:
-        print(f"Error al consultar la tienda: {e}")
+        print(f"Error al conectar a la base de datos: {e}")
+        return None
+    
+def verificarTienda(ID):
+    conexion = conectar()
+    if not conexion:
+        return None
+
+    cursor = conexion.cursor()
+    
+    try:
+        query = """
+            SELECT NombreTienda, Estado, ResponsableDeTienda 
+            FROM [FLX_Utils].[dbo].[TR_TAB_Tiendas.TAB] 
+            WHERE ID = ?
+        """
+        cursor.execute(query, (ID,))
+        resultado = cursor.fetchone()
+        
+        if resultado:
+            response = {
+                "NombreTienda": resultado[0],
+                "Estado": resultado[1],
+                "ResponsableTienda": resultado[2]
+            }
+            logging.info(f"Tienda encontrada: {response}")
+            return response
+        else:
+            logging.warning("No se encontró ninguna tienda con ese ID.")
+            return None
+        
+    except Exception as e:
         logging.error(f"Error al consultar la tienda: {e}")
-        return e, 403
-    return data 
+        return None
+    finally:
+        cursor.close()
+        conexion.close()
+
+# POR SI SE LLEGA A UTILIZAR CONSULTA A API DE TIENDAS
+# def verificarTienda(ID):
+    # url = "http://apitr.tiendaregistrada.com.co:5001/botTienda" #localhost:5002  
+    # params = {"ID": ID}
+    # print(f"Consultando la tienda con ID: {ID}")
+    # logging.info(f"Consultando la tienda con ID: {ID}")
+    # try:
+        # if url:
+            # #response = requests.get(url, params=params)
+            # response = requests.get(url, params = params, verify=False)
+            # response.raise_for_status()  # Levantar una excepción si la respuesta no es 200
+            # data = response.json()
+            # print(f"Tienda encontrada: {data}")
+            # logging.info(f"Tienda encontrada: {data}")
+        # else:
+            # print("No se encontró ninguna tienda con ese ID.")
+            # logging.error("No se encontró ninguna tienda con ese ID.")
+            # return data  # Retorna los datos recibidos de la API
+    # except requests.exceptions.RequestException as e:
+        # print(f"Error al llamar a la API: {e}")
+        # logging.error(f"Error al llamar a la API: {e}")
+        # return None
+    # except Exception as e:
+        # print(f"Error al consultar la tienda: {e}")
+        # logging.error(f"Error al consultar la tienda: {e}")
+        # return e, 403
+    # return data 
 
 def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion=""):
     # Crear el ticket
