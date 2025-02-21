@@ -51,12 +51,47 @@ def text_Message(number, text):
 user_timers = {}
 INACTIVITY_TIME_LIMIT = 120  # 2 minutos de inactividad
 
-# Función que reinicia el temporizador de inactividad
 def reset_inactivity_timer(number):
-    current_time = time.time()
-    user_timers[number] = current_time
-    print(f"Temporizador de usuario {number} reiniciado a {current_time}")
-    logging.info(f"Temporizador de usuario {number} reiniciado a {current_time}")
+    # Cancela el temporizador anterior si existe
+    if number in user_timers:
+        user_timers[number].cancel()  # Cancela el temporizador anterior
+
+    # Crea un nuevo temporizador para finalizar el chat después de INACTIVITY_TIME_LIMIT
+    user_timers[number] = threading.Timer(INACTIVITY_TIME_LIMIT, finalizar_chat, args=(number,))
+    user_timers[number].start()
+
+    print(f"Temporizador de usuario {number} reiniciado")
+    logging.info(f"Temporizador de usuario {number} reiniciado")
+
+def finalizar_chat(number):
+    if number in app.estados:  # Solo finaliza si el usuario está en un estado activo
+        mensaje = "⏱ Has sido desconectado por inactividad. Si necesitas ayuda, vuelve a iniciar el chat."
+        enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+        
+        # Limpiar el estado del usuario
+        app.estados.pop(number, None)
+        if f"{number}_nombre" in app.estados:
+            app.estados.pop(f"{number}_nombre", None)
+        if f"{number}_tienda" in app.estados:
+            app.estados.pop(f"{number}_tienda", None)
+        if f"{number}_otros" in app.estados:
+            app.estados.pop(f"{number}_otros", None)
+        
+        # Elimina el temporizador del usuario
+        if number in user_timers:
+            del user_timers[number]
+
+    print(f"Chat finalizado para el usuario {number} por inactividad")
+    logging.info(f"Chat finalizado para el usuario {number} por inactividad")
+
+# Inicia el chequeo de inactividad en un hilo separado (opcional, solo si es necesario)
+def start_inactivity_check():
+    def inactivity_check_loop():
+        while True:
+            check_inactivity()  # Revisa la inactividad
+            time.sleep(60)  # Revisa cada minuto
+
+    threading.Thread(target=inactivity_check_loop, daemon=True).start()
 
 # Función que verifica la inactividad de los usuarios
 def check_inactivity():
@@ -74,6 +109,7 @@ def check_inactivity():
             del user_timers[number]  # Elimina al usuario por inactividad
         else:
             print(f"Usuario {number} aún activo, tiempo desde última actividad: {current_time - last_activity_time}s")
+            logging.info(f"Usuario {number} aún activo, tiempo desde última actividad: {current_time - last_activity_time}s")
 
 # Inicia el chequeo de inactividad en un hilo separado
 def start_inactivity_check():
