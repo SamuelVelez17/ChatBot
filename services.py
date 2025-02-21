@@ -378,7 +378,7 @@ def administrar_chatbot(text, number, messageId, name):
             tienda = db.verificarTienda(tienda_id)
             if tienda:
                 nombre_tienda = tienda.get('NombreTienda', 'Tienda desconocida')
-                responsable = tienda.get('ResponsableTienda', 'Responsable desconocido')
+                responsable = tienda.get('ResponsableDeTienda', 'Responsable desconocido')
                 estado = tienda.get('Estado', 'Estado desconocido')  # Usar un valor por defecto si 'Estado' no existe
                 app.estados[f"{number}_tienda"] = {"nombre": nombre_tienda, "responsable": responsable, "estado": estado}
                 mensaje = f"❗Has seleccionado 🏪 *{nombre_tienda}*, cuyo responsable es 🙋🏻 *{responsable}* y que se encuentra en estado *{estado}* al día de hoy. ¿Es correcto? 🤔"

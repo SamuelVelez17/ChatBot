@@ -7,13 +7,15 @@ import os
 logging.basicConfig(filename='db.log', level=logging.DEBUG)
 
 load_dotenv()
-public = os.getenv("public")
+public = os.getenv("ippublica")
 app_token = os.getenv("app_token")
 
 def initSession():
-    url = f"http://{public}//glpi/apirest.php/initSession/?app_token={app_token}"
-    username = os.getenv("usernamebot")
-    password = os.getenv("passwordbot")
+    url = f"http://{public}/glpi/apirest.php/initSession/?app_token={app_token}"
+    logging.info(f"Iniciando sesión en la API de GLPI {url}")
+
+    username = "botsoporte"
+    password = "qwerty"
     if url:
         try:
             response = requests.get(url, auth=(username, password))
@@ -59,11 +61,16 @@ def verificarTienda(ID):
     
     try:
         query = os.getenv("query")
-        cursor.execute(query, (ID,))
+        logging.info(f"Ejecutando SQL: {query} con ID={ID}")
+        cursor.execute(query, (ID,))  
         resultado = cursor.fetchone()
-        
+       
         if resultado:
-            response = os.getenv("response")
+            response = {
+                "NombreTienda": resultado[0],
+                "Estado": resultado[1],
+                "ResponsableDeTienda": resultado[2]
+            }
             logging.info(f"Tienda encontrada: {response}")
             return response
         else:

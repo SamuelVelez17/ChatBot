@@ -1,9 +1,10 @@
 from flask import Flask, request
-import sett 
 import services
 import logging
+from dotenv import load_dotenv
+import os
 logging.basicConfig(filename='app.log', level=logging.DEBUG)
-
+load_dotenv()
 app = Flask(__name__)
 
 @app.route('/bienvenido', methods=['GET'])
@@ -13,10 +14,11 @@ def  bienvenido():
 @app.route('/webhook', methods=['GET'])
 def verificar_token():
     try:
-        token = request.args.get('hub.verify_token')
+        tokenhub = request.args.get('hub.verify_token')
         challenge = request.args.get('hub.challenge')
+        token = os.getenv("token")
 
-        if token == sett.token and challenge is not None:
+        if tokenhub == token and challenge is not None:
             return challenge
         else:
             return 'token incorrecto', 403
