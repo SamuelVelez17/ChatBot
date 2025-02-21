@@ -182,6 +182,21 @@ def listReply_Message(number, opciones, body, footer, sedd, messageId):
     return data
 
 def administrar_chatbot(text, number, messageId, name):
+        # Verificar si el usuario quiere finalizar la conversación
+    if text.strip().lower() in ["fin", "finalizar"]:
+        mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
+        enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+        app.estados.pop(number, None)  # Reiniciar el estado del usuario
+        if f"{number}_nombre" in app.estados:
+            app.estados.pop(f"{number}_nombre", None)
+        if f"{number}_tienda" in app.estados:
+            app.estados.pop(f"{number}_tienda", None)
+        if f"{number}_otros" in app.estados:
+            app.estados.pop(f"{number}_otros", None)
+        if number in user_timers:
+            del user_timers[number]
+        return
+    
     reset_inactivity_timer(number)
     print(f"---------------------Inicio del flujo de chat para el número {number} con el mensaje: {text}")
     logging.info(f"Inicio del flujo de chat para el número {number} con el mensaje: {text}")
@@ -203,6 +218,7 @@ def administrar_chatbot(text, number, messageId, name):
         "3":"Administración", 
         "4":"TI"
     }
+    
     
     def estado_inicio():
         saludos = ["hola", "buenas", "buenos", "compa", "soporte", "ti", "ayuda", "necesito", "tienda", "id"]
