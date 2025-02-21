@@ -56,6 +56,7 @@ def reset_inactivity_timer(number):
     current_time = time.time()
     user_timers[number] = current_time
     print(f"Temporizador de usuario {number} reiniciado a {current_time}")
+    logging.info(f"Temporizador de usuario {number} reiniciado a {current_time}")
 
 # Función que verifica la inactividad de los usuarios
 def check_inactivity():
