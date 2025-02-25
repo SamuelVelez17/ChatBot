@@ -64,13 +64,12 @@ def verificarTienda(ID):
         logging.info(f"Ejecutando SQL: {query} con ID={ID}")
         cursor.execute(query, (ID,))  
         resultado = cursor.fetchone()
-
+       
         if resultado:
             response = {
-                "ID": resultado[0],
-                "NombreTienda": resultado[1],
-                "Estado": resultado[2],
-                "ResponsableDeTienda": resultado[3]
+                "NombreTienda": resultado[0],
+                "Estado": resultado[1],
+                "ResponsableDeTienda": resultado[2]
             }
             logging.info(f"Tienda encontrada: {response}")
             return response
@@ -113,9 +112,9 @@ def verificarTienda(ID):
         # return e, 403
     # return data 
 
-def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion="", tienda_id=None):
+def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion=""):
     # Crear el ticket
-    respuesta_crear_ticket = crearTicket(nombre_tienda, responsable, opcion_id, descripcion, tienda_id=tienda_id)
+    respuesta_crear_ticket = crearTicket(nombre_tienda, responsable, opcion_id, descripcion)
 
     if "error" in respuesta_crear_ticket:
         return {"error": respuesta_crear_ticket["error"]}
@@ -131,7 +130,7 @@ def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, de
 
     return {"message": f"✅ Hemos registrado tu solicitud. Tu número de ticket es: {ticket_id}."}
 
-def crearTicket(nombre_tienda, responsable, opcion_id, descripcion="", tienda_id=None):
+def crearTicket(nombre_tienda, responsable, opcion_id, descripcion=""):
     url = f"http://{private}/glpi/apirest.php/Ticket/?app_token={app_token}&session_token={session_token}"
     print(f"URL de creación de ticket: {url}")
     logging.info(f"URL de creación de ticket: {url}")
@@ -139,7 +138,7 @@ def crearTicket(nombre_tienda, responsable, opcion_id, descripcion="", tienda_id
     payload = {
         "input": {
             "name": "Soporte", 
-            "content": f"Soporte solicitado para la tienda: {nombre_tienda} ID: {tienda_id}. Cuyo responsable es: {responsable}. {descripcion}",
+            "content": f"Soporte solicitado para la tienda: {nombre_tienda}. Cuyo responsable es: {responsable}. {descripcion}",
             "urgency": 3,
             "itilcategories_id": opcion_id
         }
