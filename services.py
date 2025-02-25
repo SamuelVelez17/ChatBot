@@ -271,7 +271,6 @@ def administrar_chatbot(text, number, messageId, name):
                 logging.info(f"Ticket encontrado: {ticket}")
                 if isinstance(ticket, dict):  # Verifica si ticket es un diccionario
                     numero_ticket = ticket.get('id', 'Ticket desconocido')
-                    # ... (resto del código que usa la información del ticket)
                 elif isinstance(ticket, str): #Verifica si es un string
                     print(f"Error al consultar el ticket: {ticket}") #Imprime el mensaje de error
                     logging.error(f"Error al consultar el ticket: {ticket}") #Guarda el mensaje de error en el log
@@ -305,12 +304,19 @@ def administrar_chatbot(text, number, messageId, name):
                         f"fue asignado a *{asignado}* y se encuentra en estado *{estado}*."
                     )
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                
                 # Finalizar el chat
                 mensaje2 = "🥹 Hemos finalizado tu chat, hasta pronto."
                 enviar_Mensaje_whatsapp(text_Message(number, mensaje2))
-                app.estados[number] = "inicio"
-                del user_timers[number]
+                app.estados.pop(number, None)  # Reiniciar el estado del usuario
+                if f"{number}_nombre" in app.estados:
+                    app.estados.pop(f"{number}_nombre", None)
+                if f"{number}_tienda" in app.estados:
+                    app.estados.pop(f"{number}_tienda", None)
+                if f"{number}_otros" in app.estados:
+                    app.estados.pop(f"{number}_otros", None)
+                if number in user_timers:
+                    del user_timers[number]
+                return
             else:
                 # Mensaje si no se encuentra el ticket
                 mensaje = "No hemos encontrado un ticket con ese ID ❌. Verifica el ID y envíalo nuevamente."
