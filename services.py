@@ -185,18 +185,23 @@ def listReply_Message(number, opciones, body, footer, sedd, messageId):
 def administrar_chatbot(text, number, messageId, name):
         # Verificar si el usuario quiere finalizar la conversación
     if text.strip().lower() in ["fin", "finalizar"]:
-        mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
-        enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-        app.estados.pop(number, None)  # Reiniciar el estado del usuario
-        if f"{number}_nombre" in app.estados:
-            app.estados.pop(f"{number}_nombre", None)
-        if f"{number}_tienda" in app.estados:
-            app.estados.pop(f"{number}_tienda", None)
-        if f"{number}_otros" in app.estados:
-            app.estados.pop(f"{number}_otros", None)
-        if number in user_timers:
-            del user_timers[number]
-        return
+        # Solo finalizar si el usuario está en un estado activo
+        if number in app.estados:
+            mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
+            enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+            app.estados.pop(number, None)  # Reiniciar el estado del usuario
+            if f"{number}_nombre" in app.estados:
+                app.estados.pop(f"{number}_nombre", None)
+            if f"{number}_tienda" in app.estados:
+                app.estados.pop(f"{number}_tienda", None)
+            if f"{number}_otros" in app.estados:
+                app.estados.pop(f"{number}_otros", None)
+            if number in user_timers:
+                del user_timers[number]
+            return
+        else:
+            # Si el usuario no está en un estado activo, ignorar el comando "finalizar"
+            return
     
     reset_inactivity_timer(number)
     print(f"---------------------Inicio del flujo de chat para el número {number} con el mensaje: {text}")
@@ -396,8 +401,14 @@ def administrar_chatbot(text, number, messageId, name):
             if tienda:
                 nombre_tienda = tienda.get('NombreTienda', 'Tienda desconocida')
                 responsable = tienda.get('ResponsableDeTienda', 'Responsable desconocido')
-                estado = tienda.get('Estado', 'Estado desconocido')  # Usar un valor por defecto si 'Estado' no existe
-                app.estados[f"{number}_tienda"] = {"nombre": nombre_tienda, "tienda_id": tienda_id,"responsable": responsable, "estado": estado}
+                estado = tienda.get('Estado', 'Estado desconocido')
+                # Guarda el ID de la tienda en app.estados
+                app.estados[f"{number}_tienda"] = {
+                    "nombre": nombre_tienda,
+                    "tienda_id": tienda_id,  # Asegúrate de guardar el ID de la tienda
+                    "responsable": responsable,
+                    "estado": estado
+                }
                 mensaje = f"❗Has seleccionado 🏪 *{nombre_tienda}* con ID *{tienda_id}*, cuyo responsable es 🙋🏻 *{responsable}* y que se encuentra en estado *{estado}* al día de hoy. ¿Es correcto? 🤔"
                 data = buttonReply_Message(number, ["Sí", "No"], mensaje, "Confirma tu selección", "confirmacion", messageId)
                 enviar_Mensaje_whatsapp(data)
@@ -405,7 +416,6 @@ def administrar_chatbot(text, number, messageId, name):
             else:
                 mensaje = "No hemos encontrado una tienda con ese ID ❌. Verifica el id y envíalo nuevamente"
                 enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                
         else:
             mensaje = "Por favor, envía un ID de tienda válido (un número). 😊"
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -436,14 +446,20 @@ def administrar_chatbot(text, number, messageId, name):
             tienda = app.estados.get(f"{number}_tienda", {"nombre": "Tienda desconocida", "responsable": "Responsable desconocido", "estado": "Estado desconocido"})
             nombre_tienda = tienda["nombre"]
             responsable = tienda["responsable"]
-            tienda_id = text
+            tienda_id = tienda.get("tienda_id", "ID desconocido")  # Obtén el ID de la tienda
             if opcion_id == "38":  # "Otro"
                 mensaje = "✉️ Describe tu solicitud, para que nuestro equipo de soporte pueda ayudarte."
                 enviar_Mensaje_whatsapp(text_Message(number, mensaje))
                 app.estados[number] = "esperando_descripcion"
-                app.estados[f"{number}_otros"] = {"nombre_tienda": nombre_tienda, "responsable": responsable, "opcion_id": opcion_id, "estado": tienda.get("estado"), "tienda_id": tienda_id} #Se le agrega el estado
+                app.estados[f"{number}_otros"] = {
+                    "nombre_tienda": nombre_tienda,
+                    "responsable": responsable,
+                    "opcion_id": opcion_id,
+                    "estado": tienda.get("estado"),
+                    "tienda_id": tienda_id  # Asegúrate de pasar el ID de la tienda
+                }
             else:  # Opción específica (Factura Mayor, etc.)
-                respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, tienda.get("estado"), opcion_id, tienda_id = tienda_id ) #Pasa el opcion_id y el estado
+                respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, tienda.get("estado"), opcion_id, tienda_id=tienda_id)  # Pasa el ID de la tienda
                 if "error" in respuesta:
                     mensaje_error = f"Error al procesar tu solicitud: {respuesta['error']}"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje_error))
@@ -466,6 +482,7 @@ def administrar_chatbot(text, number, messageId, name):
         opcion_id = otros_datos.get("opcion_id", "38")
         tienda_id = otros_datos.get("tienda_id", "ID desconocido")
         descripcion = text.strip()
+
         respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion, tienda_id)
         if "error" in respuesta:
             mensaje_error = f"Error al procesar tu solicitud: {respuesta['error']}"
@@ -475,10 +492,12 @@ def administrar_chatbot(text, number, messageId, name):
             mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
             enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-            del user_timers[number]
-            app.estados.pop(number, None)
-            app.estados.pop(f"{number}_otros", None)
-            app.estados.pop(f"{number}_tienda", None)
+
+        # Reiniciar el estado del usuario
+        app.estados.pop(number, None)
+        app.estados.pop(f"{number}_otros", None)
+        app.estados.pop(f"{number}_tienda", None)
+        del user_timers[number]
 
     # Mapeo de estados a funciones
     estados_funciones = {
