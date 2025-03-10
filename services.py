@@ -60,10 +60,14 @@ def check_inactivity():
             conn = db.conectar()
             if conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT numero, ultima_actividad FROM estado_usuario")
+                cursor.execute("SELECT numero, estado, ultima_actividad FROM estado_usuario")
                 usuarios = cursor.fetchall()
                 ahora = datetime.now()
                 for usuario in usuarios:
+                    # Ignorar a los usuarios en estado "inicio"
+                    if usuario.estado == "inicio":
+                        continue
+                    
                     tiempo_inactivo = (ahora - usuario.ultima_actividad).total_seconds()
                     if tiempo_inactivo > INACTIVITY_TIME_LIMIT:
                         enviar_Mensaje_whatsapp(text_Message(usuario.numero, "⏱ Has sido desconectado por inactividad."))
@@ -74,7 +78,7 @@ def check_inactivity():
             logging.error(f"Error en check_inactivity: {e}")
         finally:
             time.sleep(60)  # Esperar 60 segundos antes de la siguiente verificación
-
+            
 def reset_inactivity_timer(number):
     estado_actual = db.obtener_estado(number)
     if estado_actual:
@@ -188,6 +192,10 @@ def administrar_chatbot(text, number, messageId, name):
                     data = buttonReply_Message(number, botones, mensaje, "Selecciona una opción", "confirmacion", messageId)
                     enviar_Mensaje_whatsapp(data)
                     db.actualizar_estado(number, "esperando_confirmacion")
+                    
+                    # Inicializar el temporizador de inactividad
+                    if number not in user_timers:
+                        user_timers[number] = time.time()
                 else:
                     mensaje = "👋🏽 Por favor, saluda antes de iniciar."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -375,11 +383,14 @@ def administrar_chatbot(text, number, messageId, name):
                             mensaje = "🥹Hemos finalizado tu chat, hasta pronto."
                             enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
                             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                            
                             # Limpiar el estado del usuario y eliminar el temporizador de inactividad
                             app.estados.pop(number, None)
                             app.estados.pop(f"{number}_tienda", None)
                             if number in user_timers:  # Verificar si la clave existe antes de eliminarla
                                 del user_timers[number]
+                            
+                            # Actualizar el estado del usuario a "inicio" para evitar la desconexión por inactividad
                             db.actualizar_estado(number, "inicio")
                 else:
                     mensaje = "Opción de soporte no válida ❌. Selecciona del menú."

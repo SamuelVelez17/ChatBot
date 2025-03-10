@@ -1,11 +1,15 @@
 from flask import Flask, request
 import services
+from services import start_inactivity_check
 import logging
 from dotenv import load_dotenv
 import os
 logging.basicConfig(filename='app.log', level=logging.DEBUG)
 load_dotenv()
 app = Flask(__name__)
+
+# Iniciar el chequeo de inactividad
+start_inactivity_check()
 
 @app.route('/bienvenido', methods=['GET'])
 def  bienvenido():
