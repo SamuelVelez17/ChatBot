@@ -55,35 +55,39 @@ def text_Message(number, text):
 # Función que reinicia el temporizador de inactividad
 def reset_inactivity_timer(number):
     current_time = time.time()
+    #with estado_lock:  # Adquirir el bloqueo solo cuando sea necesario
     user_timers[number] = current_time
     logging.info(f"Temporizador de usuario {number} reiniciado a {current_time}.")
 
 # Función que verifica la inactividad de los usuarios
 def check_inactivity():
     current_time = time.time()
-    for number, last_activity_time in list(user_timers.items()):
-        if current_time - last_activity_time > INACTIVITY_TIME_LIMIT:
-            logging.info(f"Usuario {number} inactivo por más de {INACTIVITY_TIME_LIMIT} segundos.")
-            mensaje = "⏱ Has sido desconectado por inactividad. Si necesitas ayuda, vuelve a iniciar el chat."
-            enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-            # Limpiar el estado del usuario
-            with estado_lock:
+    with estado_lock:  # Adquirir el bloqueo para proteger user_timers
+        for number, last_activity_time in list(user_timers.items()):
+            if current_time - last_activity_time > INACTIVITY_TIME_LIMIT:
+                logging.info(f"Usuario {number} inactivo por más de {INACTIVITY_TIME_LIMIT} segundos.")
+                mensaje = "⏱ Has sido desconectado por inactividad. Si necesitas ayuda, vuelve a iniciar el chat."
+                enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                # Limpiar el estado del usuario
                 app.estados.pop(number, None)
                 app.estados.pop(f"{number}_nombre", None)
                 app.estados.pop(f"{number}_otros", None)
                 app.estados.pop(f"{number}_tienda", None)
                 del user_timers[number]
-        else:
-            logging.info(f"Usuario {number} aún activo, tiempo desde última actividad: {current_time - last_activity_time}s")
+            else:
+                logging.info(f"Usuario {number} aún activo, tiempo desde última actividad: {current_time - last_activity_time}s")
 
 # Inicia el chequeo de inactividad en un hilo separado
 def start_inactivity_check():
-    def inactivity_check_loop():
-        while True:
-            check_inactivity()
-            time.sleep(60)  # Revisa cada minuto
+    if not hasattr(start_inactivity_check, "thread_started"):  # Verificar si el hilo ya está en ejecución
+        def inactivity_check_loop():
+            while True:
+                check_inactivity()
+                time.sleep(60)  # Revisa cada minuto
 
-    threading.Thread(target=inactivity_check_loop, daemon=True).start()
+        inactivity_thread = threading.Thread(target=inactivity_check_loop, daemon=True)
+        inactivity_thread.start()
+        start_inactivity_check.thread_started = True  # Marcar que el hilo ya está en ejecución
 
 # Función que obtiene el mensaje de WhatsApp
 def obtener_Mensaje_whatsapp(message):
@@ -144,7 +148,7 @@ def listReply_Message(number, opciones, body, footer, sedd, messageId):
 
 # Función principal para administrar el chatbot
 def administrar_chatbot(text, number, messageId, name):
-    with estado_lock:
+    with estado_lock:  # Adquirir el bloqueo al inicio
         try:
             # Verificar si el usuario quiere finalizar el chat
             if text.strip().lower() in ["fin", "finalizar"]:
@@ -158,7 +162,7 @@ def administrar_chatbot(text, number, messageId, name):
                 del user_timers[number]
                 return  # Finalizar la ejecución del flujo
             
-            reset_inactivity_timer(number)
+            reset_inactivity_timer(number)  # Reiniciar el temporizador de inactividad
             estado_actual = app.estados.get(number, "inicio")
             logging.info(f"Inicio del flujo de chat para el número {number} con el mensaje: {text}")
             logging.info(f"Estado actual del usuario {number}: {estado_actual}")
@@ -181,7 +185,7 @@ def administrar_chatbot(text, number, messageId, name):
 
             # Funciones de estado
             def estado_inicio():
-                saludos = ["hola", "buenas", "buenos", "compa", "soporte", "ti", "ayuda", "necesito", "tienda", "id"]
+                saludos = ["hola", "buenas", "buenos", "compa", "soporte", "ti", "ayuda", "necesito", "tienda", "id", "buen"]
                 if any(saludo in text.lower() for saludo in saludos):
                     mensaje = "📩 ¡Bienvenido al chat de soporte TI de Tienda Registrada! ¿Cómo podemos ayudarte hoy?"
                     botones = ["Crear solicitud", "Consultar solicitud"]
@@ -189,7 +193,7 @@ def administrar_chatbot(text, number, messageId, name):
                     enviar_Mensaje_whatsapp(text_Message(number, recordatorio))
                     data = buttonReply_Message(number, botones, mensaje, "Selecciona una opción", "confirmacion", messageId)
                     enviar_Mensaje_whatsapp(data)
-                    app.estados[number] = "esperando_confirmacion"
+                    app.estados[number] = "esperando_confirmacion"  # Actualizar el estado correctamente
                 else:
                     mensaje = "👋🏽 Por favor, saluda antes de iniciar."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -200,11 +204,11 @@ def administrar_chatbot(text, number, messageId, name):
                     mensaje = "¿A qué área perteneces?"
                     data = listReply_Message(number, areas, mensaje, "Selecciona una opción", "confirmacion", messageId)
                     enviar_Mensaje_whatsapp(data)
-                    app.estados[number] = "esperando_seleccion_area"
+                    app.estados[number] = "esperando_seleccion_area"  # Actualizar el estado correctamente
                 elif texto_normalizado == "consultar solicitud":
                     mensaje = "¿Cuál es el número del ticket a consultar?"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    app.estados[number] = "esperando_ticket"
+                    app.estados[number] = "esperando_ticket"  # Actualizar el estado correctamente
                 else:
                     mensaje = "Por favor, selecciona una opción. 😊"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -397,7 +401,7 @@ def administrar_chatbot(text, number, messageId, name):
                     app.estados.pop(f"{number}_otros", None)
                     app.estados.pop(f"{number}_tienda", None)
 
-            # Mapeo de estados a funciones
+             # Mapeo de estados a funciones
             estados_funciones = {
                 "inicio": estado_inicio,
                 "esperando_confirmacion": estado_esperando_confirmacion,
@@ -412,13 +416,15 @@ def administrar_chatbot(text, number, messageId, name):
                 "esperando_ticket": estado_esperando_ticket
             }
 
-            # Ejecutar la función correspondiente al estado actual
-            if estado_actual in estados_funciones:
-                estados_funciones[estado_actual]()
-            else:
+            # Verificar si el estado actual es válido
+            if estado_actual not in estados_funciones:
                 mensaje = "Ha ocurrido un error. Por favor, inicia el flujo nuevamente. 😊"
                 enviar_Mensaje_whatsapp(text_Message(number, mensaje))
                 app.estados[number] = "inicio"
+                return
+
+            # Ejecutar la función correspondiente al estado actual
+            estados_funciones[estado_actual]()
 
         except Exception as e:
             logging.error(f"Error en el flujo del chatbot para el usuario {number}: {e}")
