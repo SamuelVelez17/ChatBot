@@ -2,6 +2,8 @@ import pyodbc
 import requests
 import json
 import logging
+import time
+from datetime import datetime
 from dotenv import load_dotenv
 import os
 logging.basicConfig(filename='db.log', level=logging.DEBUG)
@@ -10,6 +12,7 @@ load_dotenv()
 public = os.getenv("ippublica")
 app_token = os.getenv("app_token")
 
+# --------------------------------------GLPI--------------------------------------
 def initSession():
     url = f"http://{public}/glpi/apirest.php/initSession/?app_token={app_token}"
     logging.info(f"Iniciando sesión en la API de GLPI {url}")
@@ -36,7 +39,9 @@ def initSession():
 session_token = initSession()
 print(f"Token de sesión: {session_token}")
 logging.info(f"Token de sesión: {session_token}")
+# ---------------------------------------------------------------------------------
 
+# --------------------------------------------BASE DE DATOS--------------------------------------------
 def conectar():
     db_server = os.getenv("db_server")
     db_database = os.getenv("db_database")
@@ -112,7 +117,9 @@ def verificarTienda(ID):
         # logging.error(f"Error al consultar la tienda: {e}")
         # return e, 403
     # return data 
+# -------------------------------------------------------------------------------------------------------
 
+# --------------------------------------------TICKETS GLPI--------------------------------------------
 def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion="", tienda_id=None):
     # Crear el ticket
     respuesta_crear_ticket = crearTicket(nombre_tienda, responsable, opcion_id, descripcion, tienda_id)
@@ -133,8 +140,8 @@ def crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, de
 
 def crearTicket(nombre_tienda, responsable, opcion_id, descripcion="", tienda_id=None):
     url = f"http://{public}/glpi/apirest.php/Ticket/?app_token={app_token}&session_token={session_token}"
-    print(f"URL de creación de ticket: {url}")
     logging.info(f"URL de creación de ticket: {url}")
+    logging.info(f"Datos del ticket: nombre_tienda={nombre_tienda}, responsable={responsable}, tienda_id={tienda_id}, descripcion={descripcion}")
 
     # Agregar el ID de la tienda a la descripción si está presente
     descripcion_completa = f"Soporte solicitado para la tienda: {nombre_tienda}, (ID: {tienda_id}). " \
@@ -152,6 +159,7 @@ def crearTicket(nombre_tienda, responsable, opcion_id, descripcion="", tienda_id
 
     try:
         response = requests.post(url, json=payload)
+        logging.info(f"Respuesta de la API al crear el ticket: {response.text}")
         if response.status_code in [200, 201]:
             response_data = response.json()
             ticket_id = response_data.get("id")
@@ -163,8 +171,8 @@ def crearTicket(nombre_tienda, responsable, opcion_id, descripcion="", tienda_id
             logging.error(f"Error al crear el ticket. Respuesta: {response.text}")
             return {"error": f"No pudimos crear el ticket"}
     except Exception as e:
+        logging.error(f"Error al hacer la petición POST: {e}")
         return {"error": f"Error al hacer la petición POST: {e}"}
-
 
 def solicitante(ticket_id, user_id=144):
     url = f"http://{public}/glpi/apirest.php/Ticket/{ticket_id}/Ticket_User/?app_token={app_token}&session_token={session_token}"
@@ -172,24 +180,28 @@ def solicitante(ticket_id, user_id=144):
     payload = {
         "input": {
             "tickets_id": ticket_id,
-            "users_id": user_id
+            "users_id": user_id,
+            "type": 1  # Tipo de usuario (1 para solicitante)
         }
     }
 
     try:
         response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            print(f"Usuario asignado correctamente al ticket {ticket_id}: {response.text}")
-            logging.info(f"Usuario asignado correctamente al ticket {ticket_id}: {response.text}")
-            return response.json()
+        if response.status_code in [200, 201]:  # Considera 201 como éxito también
+            response_data = response.json()
+            if "id" in response_data:  # Verifica si la respuesta contiene un ID
+                logging.info(f"Usuario asignado correctamente al ticket {ticket_id}: {response_data}")
+                return response_data
+            else:
+                error_msg = f"La respuesta no contiene un ID válido: {response_data}"
+                logging.error(error_msg)
+                return {"error": error_msg}
         else:
             error_msg = f"Error al asignar el usuario al ticket {ticket_id}. Respuesta: {response.text}"
-            print(error_msg)
             logging.error(error_msg)
             return {"error": error_msg}
     except Exception as e:
         error_msg = f"Error al hacer la petición POST al asignar usuario: {e}"
-        print(error_msg)
         logging.error(error_msg)
         return {"error": error_msg}
 
@@ -318,3 +330,93 @@ def consultarTicketConUsuario(ticket_id):
 
     return ticket
 
+# -------------------------------------------------------------------------------------------------------
+# -------------------------------------------Funciones para manejar estados-------------------------------------------
+def insertar_usuario(numero, estado, paso=None):
+    conn = conectar()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO estado_usuario (numero, estado, paso, ultima_actividad) VALUES (?, ?, ?, GETDATE())",
+                (numero, estado, paso)
+            )
+            conn.commit()
+        except Exception as e:
+            logging.error(f"Error al insertar usuario: {e}")
+        finally:
+            conn.close()
+
+def obtener_estado(numero):
+    conn = conectar()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT estado, paso, ultima_actividad FROM estado_usuario WHERE numero = ?", (numero,))
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "estado": row.estado,
+                    "paso": row.paso,
+                    "ultima_actividad": row.ultima_actividad
+                }
+        except Exception as e:
+            logging.error(f"Error al obtener estado: {e}")
+        finally:
+            conn.close()
+    return None
+
+def actualizar_estado(numero, estado, paso=None):
+    conn = conectar()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE estado_usuario SET estado = ?, paso = ?, ultima_actividad = GETDATE() WHERE numero = ?",
+                (estado, paso, numero)
+            )
+            conn.commit()
+        except Exception as e:
+            logging.error(f"Error al actualizar estado: {e}")
+        finally:
+            conn.close()
+
+def eliminar_usuario(numero):
+    conn = conectar()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM estado_usuario WHERE numero = ?", (numero,))
+            conn.commit()
+        except Exception as e:
+            logging.error(f"Error al eliminar usuario: {e}")
+        finally:
+            conn.close()
+
+# Manejo de inactividad
+def verificar_inactividad():
+    while True:
+        try:
+            conn = conectar()  # Conectar a la base de datos
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT numero, ultima_actividad FROM estado_usuario")  # Obtener usuarios
+                usuarios = cursor.fetchall()  # Recuperar todos los usuarios
+                ahora = datetime.now()  # Obtener la hora actual
+                for usuario in usuarios:
+                    tiempo_inactivo = (ahora - usuario.ultima_actividad).total_seconds()  # Calcular tiempo inactivo
+                    if tiempo_inactivo > 120:  # 2 minutos de inactividad
+                        eliminar_usuario(usuario.numero)  # Eliminar usuario inactivo
+                        logging.info(f"Usuario {usuario.numero} eliminado por inactividad.")  # Registrar en logs
+                conn.close()  # Cerrar la conexión a la base de datos
+        except Exception as e:
+            logging.error(f"Error en verificar_inactividad: {e}")  # Registrar errores
+        finally:
+            time.sleep(60)  # Esperar 60 segundos antes de la siguiente verificación
+
+# Iniciar el hilo de inactividad
+def iniciar_hilo_inactividad():
+    import threading
+    hilo_inactividad = threading.Thread(target=verificar_inactividad, daemon=True)
+    hilo_inactividad.start()
+    logging.info("Hilo de inactividad iniciado.")

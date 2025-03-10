@@ -1,6 +1,7 @@
 import requests
 import json
 import time
+from datetime import datetime
 import db
 import app
 import threading
@@ -53,41 +54,41 @@ def text_Message(number, text):
     return data
 
 # Función que reinicia el temporizador de inactividad
-def reset_inactivity_timer(number):
-    current_time = time.time()
-    #with estado_lock:  # Adquirir el bloqueo solo cuando sea necesario
-    user_timers[number] = current_time
-    logging.info(f"Temporizador de usuario {number} reiniciado a {current_time}.")
-
-# Función que verifica la inactividad de los usuarios
 def check_inactivity():
-    current_time = time.time()
-    with estado_lock:  # Adquirir el bloqueo para proteger user_timers
-        for number, last_activity_time in list(user_timers.items()):
-            if current_time - last_activity_time > INACTIVITY_TIME_LIMIT:
-                logging.info(f"Usuario {number} inactivo por más de {INACTIVITY_TIME_LIMIT} segundos.")
-                mensaje = "⏱ Has sido desconectado por inactividad. Si necesitas ayuda, vuelve a iniciar el chat."
-                enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                # Limpiar el estado del usuario
-                app.estados.pop(number, None)
-                app.estados.pop(f"{number}_nombre", None)
-                app.estados.pop(f"{number}_otros", None)
-                app.estados.pop(f"{number}_tienda", None)
-                del user_timers[number]
-            else:
-                logging.info(f"Usuario {number} aún activo, tiempo desde última actividad: {current_time - last_activity_time}s")
+    while True:
+        try:
+            conn = db.conectar()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT numero, ultima_actividad FROM estado_usuario")
+                usuarios = cursor.fetchall()
+                ahora = datetime.now()
+                for usuario in usuarios:
+                    tiempo_inactivo = (ahora - usuario.ultima_actividad).total_seconds()
+                    if tiempo_inactivo > INACTIVITY_TIME_LIMIT:
+                        enviar_Mensaje_whatsapp(text_Message(usuario.numero, "⏱ Has sido desconectado por inactividad."))
+                        db.eliminar_usuario(usuario.numero)
+                        logging.info(f"Usuario {usuario.numero} eliminado por inactividad.")
+                conn.close()
+        except Exception as e:
+            logging.error(f"Error en check_inactivity: {e}")
+        finally:
+            time.sleep(60)  # Esperar 60 segundos antes de la siguiente verificación
 
-# Inicia el chequeo de inactividad en un hilo separado
-def start_inactivity_check():
-    if not hasattr(start_inactivity_check, "thread_started"):  # Verificar si el hilo ya está en ejecución
-        def inactivity_check_loop():
-            while True:
-                check_inactivity()
-                time.sleep(60)  # Revisa cada minuto
+def reset_inactivity_timer(number):
+    estado_actual = db.obtener_estado(number)
+    if estado_actual:
+        db.actualizar_estado(number, estado_actual["estado"], estado_actual.get("paso"))
+    else:
+        db.insertar_usuario(number, "inicio")
+    # Inicializar el temporizador de inactividad si no existe
+    if number not in user_timers:
+        user_timers[number] = time.time()
+        
+def start_inactivity_check():   
+    thread = threading.Thread(target=check_inactivity, daemon=True)
+    thread.start()
 
-        inactivity_thread = threading.Thread(target=inactivity_check_loop, daemon=True)
-        inactivity_thread.start()
-        start_inactivity_check.thread_started = True  # Marcar que el hilo ya está en ejecución
 
 # Función que obtiene el mensaje de WhatsApp
 def obtener_Mensaje_whatsapp(message):
@@ -148,24 +149,17 @@ def listReply_Message(number, opciones, body, footer, sedd, messageId):
 
 # Función principal para administrar el chatbot
 def administrar_chatbot(text, number, messageId, name):
-    with estado_lock:  # Adquirir el bloqueo al inicio
+    with estado_lock:
         try:
-            # Verificar si el usuario quiere finalizar el chat
-            if text.strip().lower() in ["fin", "finalizar"]:
-                mensaje = "👋 ¡Gracias por usar nuestro servicio de soporte! Si necesitas más ayuda, no dudes en volver a iniciar el chat."
-                enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                # Limpiar el estado del usuario
-                app.estados.pop(number, None)
-                app.estados.pop(f"{number}_nombre", None)
-                app.estados.pop(f"{number}_otros", None)
-                app.estados.pop(f"{number}_tienda", None)
-                del user_timers[number]
-                return  # Finalizar la ejecución del flujo
+            estado_actual = db.obtener_estado(number) or {"estado": "inicio"}
             
-            reset_inactivity_timer(number)  # Reiniciar el temporizador de inactividad
-            estado_actual = app.estados.get(number, "inicio")
-            logging.info(f"Inicio del flujo de chat para el número {number} con el mensaje: {text}")
-            logging.info(f"Estado actual del usuario {number}: {estado_actual}")
+            if text.strip().lower() in ["fin", "finalizar"]:
+                enviar_Mensaje_whatsapp(text_Message(number, "👋 ¡Gracias por usar nuestro servicio!"))
+                db.eliminar_usuario(number)
+                return
+            
+            reset_inactivity_timer(number)
+            logging.info(f"Estado actual del usuario {number}: {estado_actual['estado']}")
 
             # Definición de opciones de soporte y áreas
             opciones_soporte = {
@@ -193,7 +187,7 @@ def administrar_chatbot(text, number, messageId, name):
                     enviar_Mensaje_whatsapp(text_Message(number, recordatorio))
                     data = buttonReply_Message(number, botones, mensaje, "Selecciona una opción", "confirmacion", messageId)
                     enviar_Mensaje_whatsapp(data)
-                    app.estados[number] = "esperando_confirmacion"  # Actualizar el estado correctamente
+                    db.actualizar_estado(number, "esperando_confirmacion")
                 else:
                     mensaje = "👋🏽 Por favor, saluda antes de iniciar."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -204,11 +198,11 @@ def administrar_chatbot(text, number, messageId, name):
                     mensaje = "¿A qué área perteneces?"
                     data = listReply_Message(number, areas, mensaje, "Selecciona una opción", "confirmacion", messageId)
                     enviar_Mensaje_whatsapp(data)
-                    app.estados[number] = "esperando_seleccion_area"  # Actualizar el estado correctamente
+                    db.actualizar_estado(number, "esperando_seleccion_area")  # Actualizar el estado correctamente
                 elif texto_normalizado == "consultar solicitud":
                     mensaje = "¿Cuál es el número del ticket a consultar?"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    app.estados[number] = "esperando_ticket"  # Actualizar el estado correctamente
+                    db.actualizar_estado(number, "esperando_ticket") # Actualizar el estado correctamente
                 else:
                     mensaje = "Por favor, selecciona una opción. 😊"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -239,8 +233,9 @@ def administrar_chatbot(text, number, messageId, name):
                                 enviar_Mensaje_whatsapp(text_Message(number, mensaje))
                             mensaje2 = "🥹 Hemos finalizado tu chat, hasta pronto."
                             enviar_Mensaje_whatsapp(text_Message(number, mensaje2))
-                            app.estados[number] = "inicio"
-                            del user_timers[number]
+                            db.actualizar_estado(number, "inicio")
+                            if number in user_timers:  # Verificar si la clave existe antes de eliminarla
+                                del user_timers[number]
                         else:
                             logging.error(f"Error al consultar el ticket: {ticket}")
                             mensaje = "Error al consultar el ticket."
@@ -255,15 +250,15 @@ def administrar_chatbot(text, number, messageId, name):
             def estado_esperando_seleccion_area():
                 texto_normalizado = text.strip().lower()
                 if texto_normalizado in ["negocios/consultoría", "administración", "ti"]:
-                    app.estados[number] = "inicio_oficina"
+                    db.actualizar_estado(number, "inicio_oficina")
                     mensaje = "👤 A continuación, ingresa tu nombre completo."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    app.estados[number] = "esperando_nombre"
+                    db.actualizar_estado(number, "esperando_nombre")
                 elif texto_normalizado == "captura":
-                    app.estados[number] = "inicio_captura"
+                    db.actualizar_estado(number, "inicio_captura")
                     mensaje = "✍🏽 Ingresa el ID del establecimiento para el que necesitas el soporte."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    app.estados[number] = "esperando_id"
+                    db.actualizar_estado(number, "esperando_id")
                 else:
                     mensaje = "Por favor selecciona una opción válida. 😊"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -274,18 +269,18 @@ def administrar_chatbot(text, number, messageId, name):
                 mensaje = f"📝 Ingresaste tu nombre como *{nombre}*, ¿Es correcto?"
                 data = buttonReply_Message(number, ["Sí", "No"], mensaje, "Confirma tu selección", "confirmacion", messageId)
                 enviar_Mensaje_whatsapp(data)
-                app.estados[number] = "esperando_confirmacion_nombre"
+                db.actualizar_estado(number, "esperando_confirmacion_nombre")
 
             def estado_esperando_confirmacion_nombre():
                 texto_normalizado = text.strip().lower()
                 if texto_normalizado in ["sí", "si"]:
                     mensaje = "✉️ Describe tu solicitud, para que nuestro equipo de soporte pueda ayudarte."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    app.estados[number] = "esperando_descripcion_oficina"
+                    db.actualizar_estado(number, "esperando_descripcion_oficina")
                 elif texto_normalizado == "no":
                     mensaje = "🖌️ Envía tu nombre completo de nuevo, por favor."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    app.estados[number] = "esperando_nombre"
+                    db.actualizar_estado(number, "esperando_nombre")
                 else:
                     mensaje = "Por favor confirma con 'Sí' ✅ o 'No' ❌."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -308,9 +303,16 @@ def administrar_chatbot(text, number, messageId, name):
                     mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                app.estados.pop(number, None)
-                app.estados.pop(f"{number}_nombre", None)
-                del user_timers[number]
+                    
+                    # Limpiar el estado del usuario y eliminar el temporizador de inactividad
+                    app.estados.pop(number, None)
+                    app.estados.pop(f"{number}_nombre", None)
+                    if number in user_timers:  # Verificar si la clave existe antes de eliminarla
+                        del user_timers[number]
+                    
+                    # Finalizar el flujo
+                    db.actualizar_estado(number, "inicio")
+                    return  # Finalizar la función para evitar que el flujo continúe
 
             def estado_esperando_id():
                 if text.isdigit():
@@ -327,7 +329,7 @@ def administrar_chatbot(text, number, messageId, name):
                         mensaje = f"❗Has seleccionado 🏪 *{nombre_tienda}*, cuyo responsable es 🙋🏻 *{responsable}* y que se encuentra en estado *{estado}* al día de hoy. ¿Es correcto? 🤔"
                         data = buttonReply_Message(number, ["Sí", "No"], mensaje, "Confirma tu selección", "confirmacion", messageId)
                         enviar_Mensaje_whatsapp(data)
-                        app.estados[number] = "esperando_confirmacion_tienda"
+                        db.actualizar_estado(number, "esperando_confirmacion_tienda")
                     else:
                         mensaje = "No hemos encontrado una tienda con ese ID ❌. Verifica el id y envíalo nuevamente."
                         enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -338,14 +340,14 @@ def administrar_chatbot(text, number, messageId, name):
             def estado_esperando_confirmacion_tienda():
                 texto_normalizado = text.strip().lower()
                 if texto_normalizado in ["sí", "si"]:
-                    app.estados[number] = "esperando_seleccion"
+                    db.actualizar_estado(number, "esperando_seleccion")
                     mensaje = "Por favor, elige una opción de soporte: 🙌🏻"
                     data = listReply_Message(number, opciones_soporte, mensaje, "Selecciona una opción", "soporte", messageId)
                     enviar_Mensaje_whatsapp(data)
                 elif texto_normalizado == "no":
                     mensaje = "Por favor, envíame el ID de la tienda nuevamente. 😊"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    app.estados[number] = "esperando_id"
+                    db.actualizar_estado(number, "esperando_id")
                 else:
                     mensaje = "Por favor confirma con 'Sí' o 'No'."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -361,7 +363,7 @@ def administrar_chatbot(text, number, messageId, name):
                     if opcion_id == "38":  # "Otro"
                         mensaje = "✉️ Describe tu solicitud, para que nuestro equipo de soporte pueda ayudarte."
                         enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                        app.estados[number] = "esperando_descripcion"
+                        db.actualizar_estado(number, "esperando_descripcion")
                         app.estados[f"{number}_otros"] = {"nombre_tienda": nombre_tienda, "responsable": responsable, "opcion_id": opcion_id, "estado": tienda.get("estado"), "tienda_id": tienda_id}  # Incluir el ID de la tienda
                     else:  # Opción específica (Factura Mayor, etc.)
                         respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, tienda.get("estado"), opcion_id, tienda_id=tienda_id)  # Pasar el ID de la tienda
@@ -373,8 +375,12 @@ def administrar_chatbot(text, number, messageId, name):
                             mensaje = "🥹Hemos finalizado tu chat, hasta pronto."
                             enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
                             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                            del user_timers[number]
-                            app.estados[number] = "inicio"
+                            # Limpiar el estado del usuario y eliminar el temporizador de inactividad
+                            app.estados.pop(number, None)
+                            app.estados.pop(f"{number}_tienda", None)
+                            if number in user_timers:  # Verificar si la clave existe antes de eliminarla
+                                del user_timers[number]
+                            db.actualizar_estado(number, "inicio")
                 else:
                     mensaje = "Opción de soporte no válida ❌. Selecciona del menú."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -387,7 +393,10 @@ def administrar_chatbot(text, number, messageId, name):
                 opcion_id = otros_datos.get("opcion_id", "38")
                 tienda_id = otros_datos.get("tienda_id")  # Obtener el ID de la tienda
                 descripcion = text.strip()
-                respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion, tienda_id=tienda_id)  # Pasar el ID de la tienda
+                
+                # Crear el ticket con los datos de la tienda
+                respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, descripcion, tienda_id=tienda_id)
+                
                 if "error" in respuesta:
                     mensaje_error = f"Error al procesar tu solicitud: {respuesta['error']}"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje_error))
@@ -396,12 +405,19 @@ def administrar_chatbot(text, number, messageId, name):
                     mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    del user_timers[number]
+                    
+                    # Limpiar el estado del usuario y eliminar el temporizador de inactividad
                     app.estados.pop(number, None)
                     app.estados.pop(f"{number}_otros", None)
                     app.estados.pop(f"{number}_tienda", None)
+                    if number in user_timers:  # Verificar si la clave existe antes de eliminarla
+                        del user_timers[number]
+                    
+                    # Finalizar el flujo
+                    db.actualizar_estado(number, "inicio")
+                    return  # Finalizar la función para evitar que el flujo continúe
 
-             # Mapeo de estados a funciones
+            # Mapeo de estados a funciones
             estados_funciones = {
                 "inicio": estado_inicio,
                 "esperando_confirmacion": estado_esperando_confirmacion,
@@ -417,20 +433,19 @@ def administrar_chatbot(text, number, messageId, name):
             }
 
             # Verificar si el estado actual es válido
-            if estado_actual not in estados_funciones:
+            if estado_actual["estado"] not in estados_funciones:
                 mensaje = "Ha ocurrido un error. Por favor, inicia el flujo nuevamente. 😊"
                 enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                app.estados[number] = "inicio"
+                db.actualizar_estado(number, "inicio")
                 return
 
             # Ejecutar la función correspondiente al estado actual
-            estados_funciones[estado_actual]()
-
+            estados_funciones[estado_actual["estado"]]()
         except Exception as e:
-            logging.error(f"Error en el flujo del chatbot para el usuario {number}: {e}")
+            logging.error(f"Error en el flujo del chatbot para el usuario {number}: {e}", exc_info=True)  # Agrega exc_info para más detalles
             mensaje = "Ha ocurrido un error inesperado. Por favor, inicia el flujo nuevamente. 😊"
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-            app.estados[number] = "inicio"
+            db.actualizar_estado(number, "inicio")
 
 # Iniciar el chequeo de inactividad
 start_inactivity_check()
