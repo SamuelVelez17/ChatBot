@@ -70,9 +70,20 @@ def check_inactivity():
                     
                     tiempo_inactivo = (ahora - usuario.ultima_actividad).total_seconds()
                     if tiempo_inactivo > INACTIVITY_TIME_LIMIT:
-                        enviar_Mensaje_whatsapp(text_Message(usuario.numero, "⏱ Has sido desconectado por inactividad."))
-                        db.eliminar_usuario(usuario.numero)
-                        logging.info(f"Usuario {usuario.numero} eliminado por inactividad.")
+                        # Verificar si el usuario aún existe en la base de datos
+                        estado_actual = db.obtener_estado(usuario.numero)
+                        if estado_actual:  # Si el usuario aún existe, proceder con la desconexión
+                            # Eliminar al usuario de la base de datos antes de enviar el mensaje
+                            db.eliminar_usuario(usuario.numero)
+                            logging.info(f"Usuario {usuario.numero} eliminado por inactividad.")
+                            
+                            # Enviar mensaje de desconexión
+                            mensaje_desconexion = "⏱ Has sido desconectado por inactividad."
+                            enviar_Mensaje_whatsapp(text_Message(usuario.numero, mensaje_desconexion))
+                            
+                            # Eliminar el temporizador de inactividad del usuario
+                            if usuario.numero in user_timers:
+                                del user_timers[usuario.numero]
                 conn.close()
         except Exception as e:
             logging.error(f"Error en check_inactivity: {e}")
@@ -85,9 +96,9 @@ def reset_inactivity_timer(number):
         db.actualizar_estado(number, estado_actual["estado"], estado_actual.get("paso"))
     else:
         db.insertar_usuario(number, "inicio")
-    # Inicializar el temporizador de inactividad si no existe
-    if number not in user_timers:
-        user_timers[number] = time.time()
+    
+    # Reiniciar el temporizador de inactividad
+    user_timers[number] = time.time()
         
 def start_inactivity_check():   
     thread = threading.Thread(target=check_inactivity, daemon=True)
@@ -160,6 +171,12 @@ def administrar_chatbot(text, number, messageId, name):
             if text.strip().lower() in ["fin", "finalizar"]:
                 enviar_Mensaje_whatsapp(text_Message(number, "👋 ¡Gracias por usar nuestro servicio!"))
                 db.eliminar_usuario(number)
+                
+                # Limpiar el estado del usuario y eliminar el temporizador de inactividad
+                app.estados.pop(number, None)
+                app.estados.pop(f"{number}_tienda", None)
+                if number in user_timers:  # Verificar si la clave existe antes de eliminarla
+                    del user_timers[number]
                 return
             
             reset_inactivity_timer(number)

@@ -143,7 +143,7 @@ def crearTicket(nombre_tienda, responsable, opcion_id, descripcion="", tienda_id
     logging.info(f"URL de creación de ticket: {url}")
     logging.info(f"Datos del ticket: nombre_tienda={nombre_tienda}, responsable={responsable}, tienda_id={tienda_id}, descripcion={descripcion}")
 
-    # Agregar el ID de la tienda a la descripción si está presente
+    # Agregar el ID de la tienda y el nombre del usuario a la descripción
     descripcion_completa = f"Soporte solicitado para la tienda: {nombre_tienda}, (ID: {tienda_id}). " \
                            f"Cuyo responsable es: {responsable}. " \
                            f"{descripcion}"
@@ -376,6 +376,7 @@ def actualizar_estado(numero, estado, paso=None):
                 (estado, paso, numero)
             )
             conn.commit()
+            logging.info(f"Estado del usuario {numero} actualizado correctamente.")
         except Exception as e:
             logging.error(f"Error al actualizar estado: {e}")
         finally:
@@ -388,6 +389,7 @@ def eliminar_usuario(numero):
         try:
             cursor.execute("DELETE FROM estado_usuario WHERE numero = ?", (numero,))
             conn.commit()
+            logging.info(f"Usuario {numero} eliminado correctamente de la base de datos.")
         except Exception as e:
             logging.error(f"Error al eliminar usuario: {e}")
         finally:
