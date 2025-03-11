@@ -332,18 +332,41 @@ def consultarTicketConUsuario(ticket_id):
 
 # -------------------------------------------------------------------------------------------------------
 # -------------------------------------------Funciones para manejar estados-------------------------------------------
-def insertar_usuario(numero, estado, paso=None):
+def insertar_usuario(numero, estado, paso=None, tienda_id=None):
     conn = conectar()
     if conn:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "INSERT INTO estado_usuario (numero, estado, paso, ultima_actividad) VALUES (?, ?, ?, GETDATE())",
-                (numero, estado, paso)
+                "INSERT INTO estado_usuario (numero, estado, paso, tienda_id, ultima_actividad) VALUES (?, ?, ?, ?, GETDATE())",
+                (numero, estado, paso, tienda_id)
             )
             conn.commit()
         except Exception as e:
             logging.error(f"Error al insertar usuario: {e}")
+        finally:
+            conn.close()
+
+def actualizar_estado(numero, estado, paso=None, tienda_id=None):
+    conn = conectar()
+    if conn:
+        cursor = conn.cursor()
+        try:
+            # Si no se proporciona tienda_id, mantener el valor actual
+            if tienda_id is None:
+                cursor.execute(
+                    "UPDATE estado_usuario SET estado = ?, paso = ?, ultima_actividad = GETDATE() WHERE numero = ?",
+                    (estado, paso, numero)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE estado_usuario SET estado = ?, paso = ?, tienda_id = ?, ultima_actividad = GETDATE() WHERE numero = ?",
+                    (estado, paso, tienda_id, numero)
+                )
+            conn.commit()
+            logging.info(f"Estado del usuario {numero} actualizado correctamente.")
+        except Exception as e:
+            logging.error(f"Error al actualizar estado: {e}")
         finally:
             conn.close()
 
@@ -352,12 +375,13 @@ def obtener_estado(numero):
     if conn:
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT estado, paso, ultima_actividad FROM estado_usuario WHERE numero = ?", (numero,))
+            cursor.execute("SELECT estado, paso, tienda_id, ultima_actividad FROM estado_usuario WHERE numero = ?", (numero,))
             row = cursor.fetchone()
             if row:
                 return {
                     "estado": row.estado,
                     "paso": row.paso,
+                    "tienda_id": row.tienda_id,
                     "ultima_actividad": row.ultima_actividad
                 }
         except Exception as e:
@@ -365,22 +389,6 @@ def obtener_estado(numero):
         finally:
             conn.close()
     return None
-
-def actualizar_estado(numero, estado, paso=None):
-    conn = conectar()
-    if conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "UPDATE estado_usuario SET estado = ?, paso = ?, ultima_actividad = GETDATE() WHERE numero = ?",
-                (estado, paso, numero)
-            )
-            conn.commit()
-            logging.info(f"Estado del usuario {numero} actualizado correctamente.")
-        except Exception as e:
-            logging.error(f"Error al actualizar estado: {e}")
-        finally:
-            conn.close()
 
 def eliminar_usuario(numero):
     conn = conectar()
