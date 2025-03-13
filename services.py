@@ -394,16 +394,28 @@ def administrar_chatbot(text, number, messageId, name):
                             nombre_tienda = tienda.get('NombreTienda', 'Tienda desconocida')
                             responsable = tienda.get('ResponsableDeTienda', 'Responsable desconocido')
                             estado = tienda.get('Estado', 'Estado desconocido')
-                            respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, tienda_id=tienda_id)
-                            if "error" in respuesta:
-                                mensaje_error = f"Error al procesar tu solicitud: {respuesta['error']}"
-                                enviar_Mensaje_whatsapp(text_Message(number, mensaje_error))
-                            else:
-                                mensaje_exito = f"{respuesta['message']}"
-                                mensaje = "🥹Hemos finalizado tu chat, hasta pronto."
-                                enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
+                            if opcion_id == "38":  # "Otro"
+                                mensaje = "✉️ Describe tu solicitud, para que nuestro equipo de soporte pueda ayudarte."
                                 enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                                db.actualizar_estado(number, "inicio")
+                                db.actualizar_estado(number, "esperando_descripcion")
+                                app.estados[f"{number}_otros"] = {
+                                    "nombre_tienda": nombre_tienda,
+                                    "responsable": responsable,
+                                    "opcion_id": opcion_id,
+                                    "estado": estado,
+                                    "tienda_id": tienda_id
+                                }
+                            else:  # Opción específica (Factura Mayor, etc.)
+                                respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, tienda_id=tienda_id)
+                                if "error" in respuesta:
+                                    mensaje_error = f"Error al procesar tu solicitud: {respuesta['error']}"
+                                    enviar_Mensaje_whatsapp(text_Message(number, mensaje_error))
+                                else:
+                                    mensaje_exito = f"{respuesta['message']}"
+                                    mensaje = "🥹Hemos finalizado tu chat, hasta pronto."
+                                    enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
+                                    enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                                    db.actualizar_estado(number, "inicio")
                         else:
                             mensaje = "No se encontró información de la tienda. Por favor, inicia el proceso nuevamente."
                             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
