@@ -186,6 +186,7 @@ def administrar_chatbot(text, number, messageId, name):
             opciones_soporte = {
                 "43": "Factura Mayor",
                 "59": "Generar JSON Hiopos>KF",
+                "60": "Restaurar Backup KF",
                 "44": "Borrar Hist Ventas HData",
                 "41": "Gestionar Códigos Null",
                 "42": "Borrado de Precios",
