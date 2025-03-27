@@ -338,7 +338,7 @@ def insertar_usuario(numero, estado, paso=None, tienda_id=None):
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "INSERT INTO estado_usuario (numero, estado, paso, tienda_id, ultima_actividad) VALUES (?, ?, ?, ?, GETDATE())",
+                "INSERT INTO BOT_estado_usuario (numero, estado, paso, tienda_id, ultima_actividad) VALUES (?, ?, ?, ?, GETDATE())",
                 (numero, estado, paso, tienda_id)
             )
             conn.commit()
@@ -347,45 +347,75 @@ def insertar_usuario(numero, estado, paso=None, tienda_id=None):
         finally:
             conn.close()
 
-def actualizar_estado(numero, estado, paso=None, tienda_id=None):
+def actualizar_estado(numero, estado, paso=None, tienda_id=None, nombre_usuario=None):
     conn = conectar()
     if conn:
         cursor = conn.cursor()
         try:
-            # Si no se proporciona tienda_id, mantener el valor actual
-            if tienda_id is None:
-                cursor.execute(
-                    "UPDATE estado_usuario SET estado = ?, paso = ?, ultima_actividad = GETDATE() WHERE numero = ?",
-                    (estado, paso, numero)
-                )
-            else:
-                cursor.execute(
-                    "UPDATE estado_usuario SET estado = ?, paso = ?, tienda_id = ?, ultima_actividad = GETDATE() WHERE numero = ?",
-                    (estado, paso, tienda_id, numero)
-                )
+            # Construcción dinámica de la consulta
+            query = "UPDATE BOT_estado_usuario SET estado = ?, ultima_actividad = GETDATE()"
+            params = [estado]
+            
+            if paso is not None:
+                query += ", paso = ?"
+                params.append(paso)
+            if tienda_id is not None:
+                query += ", tienda_id = ?"
+                params.append(tienda_id)
+            if nombre_usuario is not None:
+                query += ", nombre_usuario = ?"
+                params.append(nombre_usuario)
+                
+            query += " WHERE numero = ?"
+            params.append(numero)
+            
+            logging.info(f"Ejecutando query: {query} con params: {params}")
+            cursor.execute(query, params)
             conn.commit()
-            logging.info(f"Estado del usuario {numero} actualizado correctamente.")
+            
+            if cursor.rowcount == 0:
+                # No se actualizó ningún registro, probar con INSERT
+                logging.info("No se actualizó registro, intentando INSERT")
+                insert_query = """
+                    INSERT INTO BOT_estado_usuario 
+                    (numero, estado, paso, tienda_id, nombre_usuario, ultima_actividad) 
+                    VALUES (?, ?, ?, ?, ?, GETDATE())
+                """
+                insert_params = [numero, estado, paso, tienda_id, nombre_usuario]
+                cursor.execute(insert_query, insert_params)
+                conn.commit()
+                logging.info("Insert realizado exitosamente")
+            
+            return True
         except Exception as e:
-            logging.error(f"Error al actualizar estado: {e}")
+            logging.error(f"Error al actualizar estado: {str(e)}", exc_info=True)
+            return False
         finally:
             conn.close()
+    return False
 
 def obtener_estado(numero):
     conn = conectar()
     if conn:
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT estado, paso, tienda_id, ultima_actividad FROM estado_usuario WHERE numero = ?", (numero,))
+            cursor.execute("""
+                SELECT estado, paso, tienda_id, nombre_usuario, ultima_actividad 
+                FROM BOT_estado_usuario 
+                WHERE numero = ?""", (numero,))
             row = cursor.fetchone()
             if row:
                 return {
                     "estado": row.estado,
                     "paso": row.paso,
                     "tienda_id": row.tienda_id,
+                    "nombre_usuario": row.nombre_usuario,
                     "ultima_actividad": row.ultima_actividad
                 }
+            return None
         except Exception as e:
-            logging.error(f"Error al obtener estado: {e}")
+            logging.error(f"Error al obtener estado: {str(e)}")
+            return None
         finally:
             conn.close()
     return None
@@ -395,7 +425,7 @@ def eliminar_usuario(numero):
     if conn:
         cursor = conn.cursor()
         try:
-            cursor.execute("DELETE FROM estado_usuario WHERE numero = ?", (numero,))
+            cursor.execute("DELETE FROM BOT_estado_usuario WHERE numero = ?", (numero,))
             conn.commit()
             logging.info(f"Usuario {numero} eliminado correctamente de la base de datos.")
         except Exception as e:
@@ -410,7 +440,7 @@ def verificar_inactividad():
             conn = conectar()  # Conectar a la base de datos
             if conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT numero, ultima_actividad FROM estado_usuario")  # Obtener usuarios
+                cursor.execute("SELECT numero, ultima_actividad FROM BOT_estado_usuario")  # Obtener usuarios
                 usuarios = cursor.fetchall()  # Recuperar todos los usuarios
                 ahora = datetime.now()  # Obtener la hora actual
                 for usuario in usuarios:

@@ -3,7 +3,6 @@ import json
 import time
 from datetime import datetime
 import db
-import app
 import threading
 import logging
 from dotenv import load_dotenv
@@ -60,7 +59,7 @@ def check_inactivity():
             conn = db.conectar()
             if conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT numero, estado, ultima_actividad FROM estado_usuario")
+                cursor.execute("SELECT numero, estado, ultima_actividad FROM BOT_estado_usuario")
                 usuarios = cursor.fetchall()
                 ahora = datetime.now()
                 for usuario in usuarios:
@@ -103,7 +102,6 @@ def reset_inactivity_timer(number):
 def start_inactivity_check():   
     thread = threading.Thread(target=check_inactivity, daemon=True)
     thread.start()
-
 
 # Función que obtiene el mensaje de WhatsApp
 def obtener_Mensaje_whatsapp(message):
@@ -170,17 +168,22 @@ def administrar_chatbot(text, number, messageId, name):
             
             if text.strip().lower() in ["fin", "finalizar"]:
                 enviar_Mensaje_whatsapp(text_Message(number, "👋 ¡Gracias por usar nuestro servicio!"))
-                db.eliminar_usuario(number)
                 
-                # Limpiar el estado del usuario y eliminar el temporizador de inactividad
-                app.estados.pop(number, None)
-                app.estados.pop(f"{number}_tienda", None)
-                if number in user_timers:  # Verificar si la clave existe antes de eliminarla
+                # Limpiar TODOS los datos del usuario
+                db.actualizar_estado(
+                    number, 
+                    "inicio", 
+                    paso=None, 
+                    tienda_id=None, 
+                    nombre_usuario=None  # Asegurar que el nombre se borre
+                )
+                
+                # Alternativa: También puedes usar eliminar_usuario si prefieres
+                # db.eliminar_usuario(number)
+                
+                if number in user_timers:
                     del user_timers[number]
                 return
-            
-            reset_inactivity_timer(number)
-            logging.info(f"Estado actual del usuario {number}: {estado_actual['estado']}")
 
             # Definición de opciones de soporte y áreas
             opciones_soporte = {
@@ -203,15 +206,23 @@ def administrar_chatbot(text, number, messageId, name):
             def estado_inicio():
                 saludos = ["hola", "buenas", "buenos", "compa", "soporte", "ti", "ayuda", "necesito", "tienda", "id", "buen"]
                 if any(saludo in text.lower() for saludo in saludos):
+                    # 1. Primero actualizar el estado en la base de datos
+                    if not db.actualizar_estado(number, "esperando_confirmacion"):
+                        logging.error(f"No se pudo actualizar estado para {number}")
+                        enviar_Mensaje_whatsapp(text_Message(number, "⚠️ Error temporal. Por favor intenta nuevamente."))
+                        return
+                        
+                    # 2. Preparar y enviar mensajes solo si el estado se guardó correctamente
                     mensaje = "📩 ¡Bienvenido al chat de soporte TI de Tienda Registrada! ¿Cómo podemos ayudarte hoy?"
                     botones = ["Crear solicitud", "Consultar solicitud"]
                     recordatorio = "⏰ Finalizaremos automáticamente el chat después de 2 minutos de inactividad. Para finalizar el chat antes escriba 'Fin' o 'Finalizar'."
+                    
+                    # Enviar mensajes
                     enviar_Mensaje_whatsapp(text_Message(number, recordatorio))
                     data = buttonReply_Message(number, botones, mensaje, "Selecciona una opción", "confirmacion", messageId)
                     enviar_Mensaje_whatsapp(data)
-                    db.actualizar_estado(number, "esperando_confirmacion")
                     
-                    # Inicializar el temporizador de inactividad
+                    # 3. Inicializar temporizador
                     if number not in user_timers:
                         user_timers[number] = time.time()
                 else:
@@ -224,11 +235,11 @@ def administrar_chatbot(text, number, messageId, name):
                     mensaje = "¿A qué área perteneces?"
                     data = listReply_Message(number, areas, mensaje, "Selecciona una opción", "confirmacion", messageId)
                     enviar_Mensaje_whatsapp(data)
-                    db.actualizar_estado(number, "esperando_seleccion_area")  # Actualizar el estado correctamente
+                    db.actualizar_estado(number, "esperando_seleccion_area")
                 elif texto_normalizado == "consultar solicitud":
                     mensaje = "¿Cuál es el número del ticket a consultar?"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    db.actualizar_estado(number, "esperando_ticket") # Actualizar el estado correctamente
+                    db.actualizar_estado(number, "esperando_ticket")
                 else:
                     mensaje = "Por favor, selecciona una opción. 😊"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -249,18 +260,20 @@ def administrar_chatbot(text, number, messageId, name):
                                 mensaje_estado = "🏃🏽‍♂️En breve, un miembro de nuestro equipo comenzará a trabajar en tu solicitud. Te enviaremos todas las actualizaciones del caso al correo electrónico registrado."
                                 enviar_Mensaje_whatsapp(text_Message(number, mensaje_estado))
                             else:
-                                app.estados[f"{number}_ticket"] = {
-                                    "id": numero_ticket,
+                                # Guardamos el ticket en la base de datos
+                                db.actualizar_estado(number, estado_actual["estado"], paso=json.dumps({
+                                    "ticket_id": numero_ticket,
                                     "responsable": responsable,
                                     "asignado": asignado,
                                     "estado": estado
-                                }
+                                }))
+                                
                                 mensaje = f"El ticket *#{numero_ticket}* 🎫, creado por *{responsable}* 🙋🏻, fue asignado a *{asignado}* y se encuentra en estado *{estado}*."
                                 enviar_Mensaje_whatsapp(text_Message(number, mensaje))
                             mensaje2 = "🥹 Hemos finalizado tu chat, hasta pronto."
                             enviar_Mensaje_whatsapp(text_Message(number, mensaje2))
                             db.actualizar_estado(number, "inicio")
-                            if number in user_timers:  # Verificar si la clave existe antes de eliminarla
+                            if number in user_timers:
                                 del user_timers[number]
                         else:
                             logging.error(f"Error al consultar el ticket: {ticket}")
@@ -291,18 +304,41 @@ def administrar_chatbot(text, number, messageId, name):
 
             def estado_esperando_nombre():
                 nombre = text.strip()
-                app.estados[f"{number}_nombre"] = nombre
+                # Guardamos el nombre en la columna nombre_usuario Y en paso para compatibilidad
+                db.actualizar_estado(
+                    number, 
+                    "esperando_confirmacion_nombre", 
+                    nombre_usuario=nombre,
+                    paso=nombre  # Doble almacenamiento por seguridad
+                )
+                
                 mensaje = f"📝 Ingresaste tu nombre como *{nombre}*, ¿Es correcto?"
                 data = buttonReply_Message(number, ["Sí", "No"], mensaje, "Confirma tu selección", "confirmacion", messageId)
                 enviar_Mensaje_whatsapp(data)
-                db.actualizar_estado(number, "esperando_confirmacion_nombre")
 
             def estado_esperando_confirmacion_nombre():
                 texto_normalizado = text.strip().lower()
+                estado_actual = db.obtener_estado(number)
+                
+                # Recuperamos el nombre de ambas columnas por seguridad
+                nombre = estado_actual.get("nombre_usuario") or estado_actual.get("paso") if estado_actual else None
+                
+                if not nombre:
+                    mensaje = "No se encontró tu nombre. Por favor, inicia el proceso nuevamente."
+                    enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                    db.actualizar_estado(number, "inicio")
+                    return
+                
                 if texto_normalizado in ["sí", "si"]:
+                    # Pasamos el nombre al siguiente estado explícitamente
+                    db.actualizar_estado(
+                        number, 
+                        "esperando_descripcion_oficina", 
+                        nombre_usuario=nombre,  # Mantenemos el nombre
+                        paso="confirmado"  # Marcamos confirmación
+                    )
                     mensaje = "✉️ Describe tu solicitud, para que nuestro equipo de soporte pueda ayudarte."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    db.actualizar_estado(number, "esperando_descripcion_oficina")
                 elif texto_normalizado == "no":
                     mensaje = "🖌️ Envía tu nombre completo de nuevo, por favor."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -313,32 +349,51 @@ def administrar_chatbot(text, number, messageId, name):
 
             def estado_esperando_descripcion_oficina():
                 descripcion = text.strip()
-                nombre = app.estados.get(f"{number}_nombre", "Usuario desconocido")
+                estado_actual = db.obtener_estado(number)
+                
+                nombre = estado_actual.get("nombre_usuario") if estado_actual else None
+                
+                if not nombre:
+                    mensaje = "❌ No se encontró tu nombre. Por favor, inicia el proceso nuevamente."
+                    enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                    db.actualizar_estado(number, "inicio", nombre_usuario=None)
+                    return
+                
+                # Guardar la descripción en la base de datos antes de crear el ticket
+                db.actualizar_estado(
+                    number,
+                    estado_actual["estado"],
+                    paso=descripcion,  # Almacenamos la descripción en 'paso'
+                    nombre_usuario=nombre
+                )
+                
                 respuesta = db.crearTicketYAsignarUsuario(
                     nombre_tienda="Oficina",
                     responsable=nombre,
                     estado="Nuevo",
                     opcion_id=38,
-                    descripcion=f"Soporte solicitado por: {nombre}. {descripcion}"
+                    descripcion=f"Soporte solicitado por: {nombre}. {descripcion}",
+                    tienda_id=None
                 )
+                
+                # Limpiar datos después de crear ticket
+                db.actualizar_estado(
+                    number, 
+                    "inicio", 
+                    paso=None, 
+                    tienda_id=None, 
+                    nombre_usuario=None
+                )
+                
                 if "error" in respuesta:
                     mensaje_error = f"Hubo un error al procesar tu solicitud: {respuesta['error']}"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje_error))
                 else:
                     mensaje_exito = f"{respuesta['message']}"
-                    mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
-                    enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                    
-                    # Limpiar el estado del usuario y eliminar el temporizador de inactividad
-                    app.estados.pop(number, None)
-                    app.estados.pop(f"{number}_nombre", None)
-                    if number in user_timers:  # Verificar si la clave existe antes de eliminarla
+                    enviar_Mensaje_whatsapp(text_Message(number, "🥹 Hemos finalizado tu chat, hasta pronto."))
+                    if number in user_timers:
                         del user_timers[number]
-                    
-                    # Finalizar el flujo
-                    db.actualizar_estado(number, "inicio")
-                    return  # Finalizar la función para evitar que el flujo continúe
 
             def estado_esperando_id():
                 if text.isdigit():
@@ -350,8 +405,10 @@ def administrar_chatbot(text, number, messageId, name):
                         nombre_tienda = tienda.get('NombreTienda', 'Tienda desconocida')
                         responsable = tienda.get('ResponsableDeTienda', 'Responsable desconocido')
                         estado = tienda.get('Estado', 'Estado desconocido')
-                        # Almacenar el ID de la tienda en la base de datos
+                        
+                        # Guardamos los datos de la tienda en la base de datos
                         db.actualizar_estado(number, "esperando_confirmacion_tienda", tienda_id=tienda_id)
+                        
                         mensaje = f"❗Has seleccionado 🏪 *{nombre_tienda}*, cuyo responsable es 🙋🏻 *{responsable}* y que se encuentra en estado *{estado}* al día de hoy. ¿Es correcto? 🤔"
                         data = buttonReply_Message(number, ["Sí", "No"], mensaje, "Confirma tu selección", "confirmacion", messageId)
                         enviar_Mensaje_whatsapp(data)
@@ -364,18 +421,35 @@ def administrar_chatbot(text, number, messageId, name):
 
             def estado_esperando_confirmacion_tienda():
                 texto_normalizado = text.strip().lower()
+                estado_actual = db.obtener_estado(number)
+                
+                if not estado_actual or 'tienda_id' not in estado_actual:
+                    mensaje = "❌ Error: No se encontró información de la tienda. Por favor, inicia el proceso nuevamente."
+                    enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                    db.actualizar_estado(number, "inicio")
+                    return
+                
+                tienda_id = estado_actual['tienda_id']
+                
                 if texto_normalizado in ["sí", "si"]:
-                    estado_actual = db.obtener_estado(number)
-                    tienda_id = estado_actual.get("tienda_id")
-                    if tienda_id:
-                        db.actualizar_estado(number, "esperando_seleccion", tienda_id=tienda_id)
-                        mensaje = "Por favor, elige una opción de soporte: 🙌🏻"
-                        data = listReply_Message(number, opciones_soporte, mensaje, "Selecciona una opción", "soporte", messageId)
-                        enviar_Mensaje_whatsapp(data)
-                    else:
-                        mensaje = "No se encontró el ID de la tienda. Por favor, inicia el proceso nuevamente."
+                    # Verificar nuevamente la tienda antes de continuar
+                    tienda = db.verificarTienda(tienda_id)
+                    if not tienda:
+                        mensaje = "❌ La tienda ya no está disponible. Por favor, inicia el proceso nuevamente."
                         enviar_Mensaje_whatsapp(text_Message(number, mensaje))
                         db.actualizar_estado(number, "inicio")
+                        return
+                        
+                    db.actualizar_estado(
+                        number, 
+                        "esperando_seleccion", 
+                        tienda_id=tienda_id,  # Mantener el tienda_id
+                        nombre_usuario=estado_actual.get("nombre_usuario")  # Mantener el nombre si existe
+                    )
+                    mensaje = "Por favor, elige una opción de soporte: 🙌🏻"
+                    data = listReply_Message(number, opciones_soporte, mensaje, "Selecciona una opción", "soporte", messageId)
+                    enviar_Mensaje_whatsapp(data)
+                    
                 elif texto_normalizado == "no":
                     mensaje = "Por favor, envíame el ID de la tienda nuevamente. 😊"
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
@@ -386,83 +460,99 @@ def administrar_chatbot(text, number, messageId, name):
 
             def estado_esperando_seleccion():
                 opcion_id = next((key for key, value in opciones_soporte.items() if value.lower() == text.lower()), None)
-                if opcion_id:
-                    estado_actual = db.obtener_estado(number)
-                    tienda_id = estado_actual.get("tienda_id")
-                    if tienda_id:
-                        tienda = db.verificarTienda(tienda_id)
-                        if tienda:
-                            nombre_tienda = tienda.get('NombreTienda', 'Tienda desconocida')
-                            responsable = tienda.get('ResponsableDeTienda', 'Responsable desconocido')
-                            estado = tienda.get('Estado', 'Estado desconocido')
-                            if opcion_id == "38":  # "Otro"
-                                mensaje = "✉️ Describe tu solicitud, para que nuestro equipo de soporte pueda ayudarte."
-                                enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                                db.actualizar_estado(number, "esperando_descripcion")
-                                app.estados[f"{number}_otros"] = {
-                                    "nombre_tienda": nombre_tienda,
-                                    "responsable": responsable,
-                                    "opcion_id": opcion_id,
-                                    "estado": estado,
-                                    "tienda_id": tienda_id
-                                }
-                            else:  # Opción específica (Factura Mayor, etc.)
-                                respuesta = db.crearTicketYAsignarUsuario(nombre_tienda, responsable, estado, opcion_id, tienda_id=tienda_id)
-                                if "error" in respuesta:
-                                    mensaje_error = f"Error al procesar tu solicitud: {respuesta['error']}"
-                                    enviar_Mensaje_whatsapp(text_Message(number, mensaje_error))
-                                else:
-                                    mensaje_exito = f"{respuesta['message']}"
-                                    mensaje = "🥹Hemos finalizado tu chat, hasta pronto."
-                                    enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
-                                    enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                                    db.actualizar_estado(number, "inicio")
-                        else:
-                            mensaje = "No se encontró información de la tienda. Por favor, inicia el proceso nuevamente."
-                            enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                            db.actualizar_estado(number, "inicio")
-                    else:
-                        mensaje = "No se encontró el ID de la tienda. Por favor, inicia el proceso nuevamente."
-                        enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                        db.actualizar_estado(number, "inicio")
-                else:
-                    mensaje = "Opción de soporte no válida ❌. Selecciona del menú."
-                    enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-
-            def estado_esperando_descripcion():
                 estado_actual = db.obtener_estado(number)
-                tienda_id = estado_actual.get("tienda_id")
-                if tienda_id:
-                    tienda = db.verificarTienda(tienda_id)
-                    if tienda:
-                        nombre_tienda = tienda.get('NombreTienda', 'Tienda desconocida')
-                        responsable = tienda.get('ResponsableDeTienda', 'Responsable desconocido')
-                        estado = tienda.get('Estado', 'Estado desconocido')
-                        descripcion = text.strip()
+                
+                if not estado_actual or 'tienda_id' not in estado_actual:
+                    mensaje = "❌ Error: No se encontró información de la tienda. Por favor, inicia el proceso nuevamente."
+                    enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                    db.actualizar_estado(number, "inicio")
+                    return
+                
+                tienda_id = estado_actual['tienda_id']
+                tienda = db.verificarTienda(tienda_id)
+                
+                if not tienda:
+                    mensaje = "❌ La tienda ya no está disponible. Por favor, inicia el proceso nuevamente."
+                    enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                    db.actualizar_estado(number, "inicio")
+                    return
+                
+                if opcion_id:
+                    nombre_tienda = tienda.get('NombreTienda', 'Tienda desconocida')
+                    responsable = tienda.get('ResponsableDeTienda', 'Responsable desconocido')
+                    estado = tienda.get('Estado', 'Estado desconocido')
+                    
+                    if opcion_id == "38":  # "Otro"
+                        mensaje = "✉️ Describe tu solicitud, para que nuestro equipo de soporte pueda ayudarte."
+                        enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                        db.actualizar_estado(
+                            number, 
+                            "esperando_descripcion", 
+                            tienda_id=tienda_id,
+                            nombre_usuario=estado_actual.get("nombre_usuario")
+                        )
+                    else:
                         respuesta = db.crearTicketYAsignarUsuario(
-                            nombre_tienda=nombre_tienda,
-                            responsable=responsable,
-                            estado=estado,
-                            opcion_id=38,  # "Otro"
-                            descripcion=descripcion,
+                            nombre_tienda,
+                            responsable,
+                            estado,
+                            opcion_id,
                             tienda_id=tienda_id
                         )
+                        
                         if "error" in respuesta:
                             mensaje_error = f"Error al procesar tu solicitud: {respuesta['error']}"
                             enviar_Mensaje_whatsapp(text_Message(number, mensaje_error))
                         else:
                             mensaje_exito = f"{respuesta['message']}"
-                            mensaje = "🥹 Hemos finalizado tu chat, hasta pronto."
                             enviar_Mensaje_whatsapp(text_Message(number, mensaje_exito))
-                            enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+                            enviar_Mensaje_whatsapp(text_Message(number, "🥹 Hemos finalizado tu chat, hasta pronto."))
                             db.actualizar_estado(number, "inicio")
-                    else:
-                        mensaje = "No se encontró información de la tienda. Por favor, inicia el proceso nuevamente."
-                        enviar_Mensaje_whatsapp(text_Message(number, mensaje))
-                        db.actualizar_estado(number, "inicio")
                 else:
-                    mensaje = "No se encontró el ID de la tienda. Por favor, inicia el proceso nuevamente."
+                    mensaje = "Opción de soporte no válida ❌. Selecciona del menú."
                     enviar_Mensaje_whatsapp(text_Message(number, mensaje))
+
+            def estado_esperando_descripcion():
+                descripcion = text.strip()
+                estado_actual = db.obtener_estado(number)
+                tienda_id = estado_actual.get("tienda_id") if estado_actual else None
+                nombre = (estado_actual.get("nombre_usuario") or 
+                        estado_actual.get("paso") if estado_actual else "Usuario no identificado")
+                
+                if not tienda_id:
+                    enviar_Mensaje_whatsapp(text_Message(number, "❌ No se encontró información de la tienda. Por favor, inicia el proceso nuevamente."))
+                    db.actualizar_estado(number, "inicio")
+                    return
+                
+                tienda = db.verificarTienda(tienda_id)
+                if not tienda:
+                    enviar_Mensaje_whatsapp(text_Message(number, "❌ No se encontró información de la tienda. Por favor, inicia el proceso nuevamente."))
+                    db.actualizar_estado(number, "inicio")
+                    return
+                
+                # Guardar la descripción en la base de datos antes de crear el ticket
+                db.actualizar_estado(
+                    number,
+                    estado_actual["estado"],
+                    paso=descripcion,  # Almacenamos la descripción en 'paso'
+                    tienda_id=tienda_id,
+                    nombre_usuario=nombre
+                )
+                
+                respuesta = db.crearTicketYAsignarUsuario(
+                    nombre_tienda=tienda.get('NombreTienda', 'Tienda desconocida'),
+                    responsable=tienda.get('ResponsableDeTienda', 'Responsable desconocido'),
+                    estado="Nuevo",
+                    opcion_id=38,
+                    descripcion=f"Soporte solicitado para la tienda: {tienda.get('NombreTienda')}, (ID: {tienda_id}). {descripcion}",
+                    tienda_id=tienda_id
+                )
+                
+                if "error" in respuesta:
+                    enviar_Mensaje_whatsapp(text_Message(number, f"Error: {respuesta['error']}"))
+                else:
+                    enviar_Mensaje_whatsapp(text_Message(number, f"{respuesta['message']}"))
+                    enviar_Mensaje_whatsapp(text_Message(number, "🥹 Hemos finalizado tu chat, hasta pronto."))
                     db.actualizar_estado(number, "inicio")
 
             # Mapeo de estados a funciones
@@ -490,7 +580,7 @@ def administrar_chatbot(text, number, messageId, name):
             # Ejecutar la función correspondiente al estado actual
             estados_funciones[estado_actual["estado"]]()
         except Exception as e:
-            logging.error(f"Error en el flujo del chatbot para el usuario {number}: {e}", exc_info=True)  # Agrega exc_info para más detalles
+            logging.error(f"Error en el flujo del chatbot para el usuario {number}: {e}", exc_info=True)
             mensaje = "Ha ocurrido un error inesperado. Por favor, inicia el flujo nuevamente. 😊"
             enviar_Mensaje_whatsapp(text_Message(number, mensaje))
             db.actualizar_estado(number, "inicio")
