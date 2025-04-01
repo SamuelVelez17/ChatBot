@@ -167,7 +167,7 @@ def administrar_chatbot(text, number, messageId, name):
             estado_actual = db.obtener_estado(number) or {"estado": "inicio"}
             
             if text.strip().lower() in ["fin", "finalizar"]:
-                enviar_Mensaje_whatsapp(text_Message(number, "👋 ¡Gracias por usar nuestro servicio!"))
+                enviar_Mensaje_whatsapp(text_Message(number, "👋🏽 ¡Gracias por usar nuestro servicio!"))
                 
                 # Limpiar TODOS los datos del usuario
                 db.actualizar_estado(
